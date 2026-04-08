@@ -1,0 +1,49 @@
+services:
+  dbchatbox-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      - gradle-cache:/home/vscode/.gradle
+    ports:
+      - "8080:8080"   # Spring Boot application
+      - "5005:5005"   # Remote debugging
+      - "8081:8081"   # Actuator (if configured separately)
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      # Note: Debug options are configured via Gradle bootRun --debug-jvm task
+      # Setting JAVA_TOOL_OPTIONS globally causes Gradle daemon conflicts
+    networks:
+      - dev-network
+    # Keeps container running
+    command: sleep infinity
+
+  # PostgreSQL database (optional - uncomment if needed instead of H2)
+  postgres:
+      image: postgres:16-alpine
+      restart: unless-stopped
+      volumes:
+       - postgres-data:/var/lib/postgresql/data
+      environment:
+       POSTGRES_USER: devuser
+       POSTGRES_PASSWORD: devpassword
+       POSTGRES_DB: exercises_db
+      ports:
+       - "5432:5432"
+      networks:
+       - dev-network
+      healthcheck:
+       test: ["CMD-SHELL", "pg_isready -U devuser -d exercises_db"]
+       interval: 10s
+       timeout: 5s
+       retries: 5
+
+networks:
+  dev-network:
+    driver: bridge
+
+volumes:
+  gradle-cache:
+  postgres-data:  # Uncomment if using PostgreSQL
+

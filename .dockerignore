@@ -1,0 +1,48 @@
+# Docker ignore file for production builds
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Build outputs
+build/
+.gradle/
+out/
+target/
+
+# Logs
+*.log
+logs/
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Dev container files (not needed in production image)
+.devcontainer/
+
+# Documentation (optional - remove if you want docs in image)
+*.md
+!README.md
+
+# Test files
+src/test/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
