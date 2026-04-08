@@ -31,6 +31,8 @@ jobs:
       # See: https://github.com/gradle/actions/blob/main/setup-gradle/README.md
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6 # v6.0.0
+        with:
+          cache-provider: basic
 
       - name: Build with Gradle Wrapper
         run: ./gradlew build
