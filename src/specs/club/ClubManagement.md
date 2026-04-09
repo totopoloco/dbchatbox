@@ -989,15 +989,64 @@ Database indices should cover: `member.email`, `member_status_history.member_id`
 
 ## Architecture Notes
 
-### Primary Key Library
+### Build Dependencies
 
-Add `hypersistence-utils` to `build.gradle`:
+The following dependencies must be present in `build.gradle` for Phase 1:
 
 ```groovy
-implementation 'io.hypersistence:hypersistence-utils-hibernate-63:<latest>'
+dependencies {
+    // Spring Boot starters
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-graphql'
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.springframework.boot:spring-boot-h2console'
+
+    // GraphQL extended scalars (Date, DateTime, BigDecimal, Long, etc.)
+    implementation 'com.graphql-java:graphql-java-extended-scalars:22.0'
+
+    // TSID generation — provides @Tsid annotation for JPA entity primary keys
+    implementation 'io.hypersistence:hypersistence-utils-hibernate-63:<latest>'
+
+    // Utilities
+    implementation 'org.apache.commons:commons-lang3'
+    compileOnly    'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // Database drivers
+    runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Flyway dialect support — required at runtime for PostgreSQL migrations
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-graphql-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
+}
 ```
 
-All entities use `@Tsid` on a `Long id` field.
+> **Note:** The `flyway-database-postgresql` runtime dependency is required by Flyway 10+ to connect to PostgreSQL. Without it, Flyway will fail to detect the database type at startup. H2 support is built into Flyway core and requires no additional dialect dependency.
+
+### Primary Key Library — TSID
+
+All entities use `@Tsid` on a `Long id` field, provided by `hypersistence-utils`.
+
+### GraphQL Configuration
+
+The following shared GraphQL properties must be set in `application.properties`:
+
+```properties
+# GraphQL configuration (shared)
+spring.graphql.http.path=/graphql
+spring.graphql.schema.printer.enabled=true
+```
+
+- `spring.graphql.http.path=/graphql` — exposes the GraphQL endpoint at `/graphql`.
+- `spring.graphql.schema.printer.enabled=true` — enables the schema introspection endpoint, useful for development and tooling (GraphiQL, Postman, etc.).
 
 ### Domain packages (following project DDD conventions)
 
@@ -1012,7 +1061,44 @@ at.mavila.dbchatbox.domain.club.training       — TrainingSession entity, servi
 at.mavila.dbchatbox.domain.club.trainer        — Trainer entity, TrainerLog, hours aggregation
 ```
 
-### Database migrations
+### Database Migrations — Flyway
+
+Flyway manages all schema changes via versioned SQL scripts under `src/main/resources/db/migration/`.
+
+#### Profile-specific configuration
+
+The application uses Spring profiles to target different databases:
+
+**`application-dev.properties`** (H2 — local development):
+
+```properties
+spring.datasource.url=jdbc:h2:mem:dbchatbox;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+spring.datasource.username=sa
+spring.datasource.password=
+spring.datasource.driver-class-name=org.h2.Driver
+spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+spring.h2.console.enabled=true
+spring.h2.console.path=/h2-console
+```
+
+**`application-prod.properties`** (PostgreSQL — production):
+
+```properties
+spring.datasource.url=jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:exercises_db}
+spring.datasource.username=${DB_USERNAME:devuser}
+spring.datasource.password=${DB_PASSWORD:devpassword}
+spring.datasource.driver-class-name=org.postgresql.Driver
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+spring.h2.console.enabled=false
+```
+
+> **Important:** H2 is configured with `MODE=PostgreSQL` so that Flyway migration scripts written for PostgreSQL syntax also work in the H2 development environment. Use standard PostgreSQL SQL in all migration files.
+
+**`application-test.properties`** (H2 — test suite):
+
+Mirrors the `dev` profile datasource configuration so that tests run against an in-memory H2 database.
+
+#### Migration scripts
 
 Flyway migrations under `src/main/resources/db/migration/` for all tables including:
 
@@ -1022,6 +1108,98 @@ Flyway migrations under `src/main/resources/db/migration/` for all tables includ
 - `unit` (with seed data: DAYS, WEEKS, MONTHS, YEARS)
 - `membership_type_status` (with seed data: DRAFT, ACTIVE, INACTIVE)
 - `membership_type_training_session` (join table)
+
+### Data Access Layer — JPA Repositories
+
+All database access must use **Spring Data JPA repositories** (`JpaRepository` / `CrudRepository`). Direct use of `EntityManager` is **not allowed**.
+
+**Conventions:**
+
+- Each entity gets its own repository interface in the same domain subpackage as the entity.
+- Repository interfaces extend `JpaRepository<EntityType, Long>` (since all PKs are `Long` / TSID).
+- Use **derived query methods** (e.g. `findByEmail`, `findByMemberIdOrderByChangedAtDesc`) where the method name clearly expresses the query.
+- Use **`@Query` (JPQL)** for queries that cannot be cleanly expressed via method naming (e.g. aggregations, joins, subqueries).
+- **Never inject `EntityManager`** into services or repositories. If a query requires native SQL or complex criteria, use a `@Query(nativeQuery = true)` method on the repository interface instead.
+- Repositories are injected into **domain services** via constructor injection (Lombok `@RequiredArgsConstructor`).
+
+**Repository naming:** `<Entity>Repository` — e.g. `MemberRepository`, `PaymentRepository`, `MemberStatusHistoryRepository`.
+
+```java
+// ✅ Good — Spring Data JPA repository with derived query methods
+public interface MemberRepository extends JpaRepository<Member, Long> {
+    Optional<Member> findByEmail(String email);
+    boolean existsByEmail(String email);
+}
+
+// ✅ Good — JPQL for complex queries
+public interface MemberStatusHistoryRepository extends JpaRepository<MemberStatusHistory, Long> {
+    @Query("SELECT h FROM MemberStatusHistory h WHERE h.memberId = :memberId ORDER BY h.changedAt DESC")
+    List<MemberStatusHistory> findByMemberIdOrderByChangedAtDesc(@Param("memberId") Long memberId);
+
+    default Optional<MemberStatusHistory> findLatestByMemberId(Long memberId) {
+        return findByMemberIdOrderByChangedAtDesc(memberId).stream().findFirst();
+    }
+}
+
+// ❌ Bad — EntityManager usage
+@Repository
+public class MemberRepositoryImpl {
+    @PersistenceContext
+    private EntityManager entityManager; // NOT ALLOWED
+}
+```
+
+### Service Layer Design — Avoid Monolithic Services
+
+The service layer must follow **domain-driven decomposition**. Each bounded context (domain subpackage) has its own dedicated service. There is **no single monolithic `ClubService`** or `AlgorithmService` that handles all operations.
+
+**Conventions:**
+
+- **One service per domain aggregate**: `MemberService`, `SubscriptionService`, `PaymentService`, `MembershipTypeService`, `TrainingSessionService`, `TrainerService`.
+- Each service is a `@Component` (or `@Service`) annotated with `@RequiredArgsConstructor` and lives in its respective domain subpackage.
+- A service orchestrates operations within its own aggregate boundary. For cross-aggregate operations (e.g. `deleteMember` which touches members, subscriptions, and status history), a **domain orchestrator** or **application service** coordinates the calls — but each step is delegated to the responsible domain service.
+- Services must **not** grow beyond their aggregate scope — a `MemberService` should not contain subscription logic or payment logic.
+- Services inject **repositories** (for data access) and **other domain services or collaborators** (for cross-cutting concerns like validation) via constructor injection.
+
+**Cross-aggregate orchestration example:**
+
+The `deleteMember` mutation involves three aggregates (member, subscription, status). Instead of cramming all logic into `MemberService`, use a thin application-level orchestrator:
+
+```java
+// ✅ Good — thin orchestrator delegates to domain services
+@Component
+@RequiredArgsConstructor
+public class MemberDeletionOrchestrator {
+    private final MemberService memberService;
+    private final SubscriptionService subscriptionService;
+    private final MemberStatusService memberStatusService;
+
+    @Transactional
+    public DeleteMemberResult deleteMember(final Long memberId) {
+        memberStatusService.recordStatus(memberId, Status.DELETED, "GDPR erasure");
+        subscriptionService.endAllActiveSubscriptions(memberId);
+        return memberService.anonymize(memberId);
+    }
+}
+
+// ❌ Bad — monolithic service handles everything
+@Service
+public class ClubService {
+    // 2000+ lines covering members, subscriptions, payments, trainers...
+}
+```
+
+**Service per domain subpackage:**
+
+```
+at.mavila.dbchatbox.domain.club.member        → MemberService
+at.mavila.dbchatbox.domain.club.status         → MemberStatusService
+at.mavila.dbchatbox.domain.club.subscription   → SubscriptionService
+at.mavila.dbchatbox.domain.club.membership     → MembershipTypeService
+at.mavila.dbchatbox.domain.club.payment        → PaymentService
+at.mavila.dbchatbox.domain.club.training       → TrainingSessionService
+at.mavila.dbchatbox.domain.club.trainer        → TrainerService
+```
 
 ### GDPR Compliance
 
