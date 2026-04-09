@@ -16,20 +16,21 @@ spreadsheets, payment tracking on paper, training schedules via WhatsApp.
 - Who is a member?
 - Who has paid?
 - Until when is a membership valid?
-- What training sessions are available?
+- What sessions (training, free games, etc.) are available?
+- When is my next session?
 - How many hours have trainers worked?
 
 ### Scope
 
 Phase 1 covers **five core domains**:
 
-| Domain         | Responsibility                                                  |
-| -------------- | --------------------------------------------------------------- |
-| **Member**     | Registration, contact details, status tracking                  |
-| **Membership** | Membership types, pricing, duration, allowed training sessions  |
-| **Payment**    | Recording payments linked to member and membership type         |
-| **Training**   | Training sessions with schedule, location, and assigned trainer |
-| **Trainer**    | Logging training hours, overview of hours worked                |
+| Domain         | Responsibility                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------- |
+| **Member**     | Registration, contact details, status tracking                                                        |
+| **Membership** | Membership types, pricing, duration, linked sessions                                                  |
+| **Payment**    | Recording payments linked to member and membership type                                               |
+| **Session**    | Scheduled sessions (training, free games, etc.), occurrences, calendar, availability                  |
+| **Trainer**    | Hour submission, approval workflow, payment tracking (hourly rate, per-session or monthly settlement) |
 
 Professional players (e.g. Bundesliga-level athletes) are treated as regular members in Phase 1.
 A future phase may introduce dedicated player/team management with tournaments, statistics, and contracts.
@@ -81,7 +82,7 @@ Represents a **person's membership in the club** — their identity, contact det
 - A member whose `memberUntil` date is in the past should be considered expired — queries must account for this.
 - Email must be unique across all members (excluding anonymized `DELETED` records).
 - **Soft-delete** (standard deactivation): record a status transition to `INACTIVE`. Does not remove personal data.
-- **GDPR erasure** (right to be forgotten, Art. 17 DSGVO): anonymizes all personal data in-place — see `deleteMember` mutation and GDPR section below. The row is preserved to maintain referential integrity with payments and subscriptions.
+- **GDPR erasure** (right to be forgotten, Art. 17 DSGVO): a two-phase process. Phase 1 (immediate): the `deleteMember` mutation anonymizes all personal data in-place and sets status to `DELETED`. The row is preserved to maintain referential integrity. Phase 2 (deferred): a scheduled purge job hard-deletes anonymized member rows after a configurable retention period (default 30 days). See GDPR rules 52–61 below.
 - A member can hold **zero, one, or many** active subscriptions simultaneously (e.g. amateur training + children coaching).
 
 ### Status (Reference Table)
@@ -152,6 +153,93 @@ Additional statuses can be added in the future without schema changes.
 - `DRAFT → INACTIVE` — cancel before launch (allowed but atypical).
 - Transitioning **to** `DRAFT` from `ACTIVE` or `INACTIVE` is **not allowed** — once launched, a type cannot return to draft.
 
+### SessionType (Reference Table)
+
+A lookup table of session categories. Values are modeled as a **Java enum** (`SessionType`) in the domain layer and stored as `String` (`VARCHAR`) in the database using `@Enumerated(EnumType.STRING)`.
+
+| Field  | Type     | Constraints                                    |
+| ------ | -------- | ---------------------------------------------- |
+| `id`   | `Long`   | TSID, auto-generated, unique                   |
+| `name` | `String` | Not null, not blank, unique, max 50 characters |
+
+**Seed data:**
+
+| `name`      | Description                                         |
+| ----------- | --------------------------------------------------- |
+| `TRAINING`  | Coach-led training session with an assigned trainer |
+| `FREE_GAME` | Open play / free game session — no trainer required |
+
+Additional session types can be added in the future (e.g. `TOURNAMENT`, `WORKSHOP`) without schema changes.
+
+**Type-specific constraints:**
+
+- `TRAINING` sessions **require** a non-null `trainerId` on the `Session` entity.
+- `FREE_GAME` sessions **must not** have a `trainerId` (it must be `null`).
+- Future types will define their own constraints.
+
+### SessionOccurrenceStatus (Reference Table)
+
+A lookup table of lifecycle statuses for individual session occurrences. Values are modeled as a **Java enum** (`SessionOccurrenceStatus`) in the domain layer and stored as `String` (`VARCHAR`) in the database using `@Enumerated(EnumType.STRING)`.
+
+| Field  | Type     | Constraints                                    |
+| ------ | -------- | ---------------------------------------------- |
+| `id`   | `Long`   | TSID, auto-generated, unique                   |
+| `name` | `String` | Not null, not blank, unique, max 50 characters |
+
+**Seed data:**
+
+| `name`      | Description                                                      |
+| ----------- | ---------------------------------------------------------------- |
+| `SCHEDULED` | The occurrence is planned and upcoming                           |
+| `CANCELLED` | The occurrence was cancelled (e.g. holiday, trainer unavailable) |
+| `COMPLETED` | The occurrence took place — trainers can log hours against it    |
+
+Additional statuses can be added in the future without schema changes.
+
+### TrainerLogStatus (Reference Table)
+
+A lookup table of approval statuses for trainer hour submissions. Values are modeled as a **Java enum** (`TrainerLogStatus`) in the domain layer and stored as `String` (`VARCHAR`) in the database using `@Enumerated(EnumType.STRING)`.
+
+| Field  | Type     | Constraints                                    |
+| ------ | -------- | ---------------------------------------------- |
+| `id`   | `Long`   | TSID, auto-generated, unique                   |
+| `name` | `String` | Not null, not blank, unique, max 50 characters |
+
+**Seed data:**
+
+| `name`     | Description                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------- |
+| `PENDING`  | Hours submitted, awaiting admin approval                                                            |
+| `APPROVED` | Hours approved by admin (or auto-approved) — trainer is entitled to payment                         |
+| `REJECTED` | Hours rejected by admin (e.g. discrepancy, session not conducted as reported). Trainer can resubmit |
+
+Additional statuses can be added in the future without schema changes.
+
+**Transitions:**
+
+- `PENDING → APPROVED` — admin approves submitted hours (or system auto-approves if `autoApproveHours` is `true` on Trainer).
+- `PENDING → REJECTED` — admin rejects submitted hours with a reason.
+- `REJECTED → PENDING` — trainer resubmits corrected hours (the existing log is updated, not duplicated).
+- `APPROVED` is terminal — once approved, hours cannot be unapproved or modified.
+
+### TrainerPaymentMode (Reference Table)
+
+A lookup table of how trainers are compensated. Values are modeled as a **Java enum** (`TrainerPaymentMode`) in the domain layer and stored as `String` (`VARCHAR`) in the database using `@Enumerated(EnumType.STRING)`.
+
+| Field  | Type     | Constraints                                    |
+| ------ | -------- | ---------------------------------------------- |
+| `id`   | `Long`   | TSID, auto-generated, unique                   |
+| `name` | `String` | Not null, not blank, unique, max 50 characters |
+
+**Seed data:**
+
+| `name`        | Description                                                                                           |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| `PER_SESSION` | Trainer is paid after each session (once hours are `APPROVED`)                                        |
+| `MONTHLY`     | Trainer is paid monthly — approved hours are aggregated and settled at the end of each calendar month |
+
+Additional payment modes can be added in the future without schema changes.
+
 ### MemberStatusHistory (Pivot Table)
 
 Tracks every status transition for a member, providing a full audit trail.
@@ -182,7 +270,7 @@ Links a member to a membership type for a **specific period**. One subscription 
 | `membershipTypeId` | `Long`       | Not null, references MembershipType                                                                                                         |
 | `startDate`        | `LocalDate`  | Not null, when this subscription period begins                                                                                              |
 | `endDate`          | `LocalDate`  | Not null, when this subscription period ends; must be after `startDate`. Defaults to `startDate + duration` (in the membership type's unit) |
-| `agreedPrice`      | `BigDecimal` | Optional; if set, overrides the membership type's `price` for billing                                                                       |
+| `agreedPrice`      | `BigDecimal` | Not null; the locked-in price for this subscription period, always populated at creation (see business rules below)                         |
 
 **Derived state:** A subscription is considered **active** when `endDate >= today`. No separate boolean needed.
 
@@ -192,8 +280,9 @@ Links a member to a membership type for a **specific period**. One subscription 
 - A member can have successive subscriptions to the **same** membership type (e.g. renewed annually). Each renewal is a distinct subscription row with its own period.
 - `endDate` is always set. When the administrator does not provide it, the system computes it as `startDate + duration` (using the membership type's `duration` and `unit`). The administrator can override it to a different date.
 - **Early termination**: The `endSubscription` mutation sets `endDate` to today if the current `endDate` is in the future.
-- **Outstanding dues** for a subscription = effective price − sum of all payments linked to that subscription. Effective price = `agreedPrice` if set, otherwise the membership type's `price`.
-- **Prorated pricing** (`agreedPrice`): When a member joins mid-period (e.g. season starts November but member subscribes in March), the administrator can set `agreedPrice` to a reduced amount. If `null`, the full membership type `price` applies. The system does not calculate proration automatically — the administrator determines the amount externally.
+- **Outstanding dues** for a subscription = `agreedPrice` − sum of all payments linked to that subscription.
+- **Price resolution at creation**: `agreedPrice` is always populated when a subscription is created. The system resolves it in priority order: (1) explicit value provided by the admin, (2) auto-calculated prorated price if the membership type has `proratedMode = true`, (3) the membership type’s current `price`. Once stored, `agreedPrice` is immutable — it captures the price agreed at subscription time and is not affected by future changes to the membership type’s `price`.
+- **Prorated pricing**: When a member joins mid-period (e.g. season starts November but member subscribes in March), the administrator can provide an explicit `agreedPrice` to a reduced amount. Alternatively, if the membership type has `proratedMode = true`, the system auto-calculates the prorated price (see MembershipType rules).
 - Examples:
   - _Anna joined the club in 2010 with a "Free Games" subscription (€120/year) — she plays casual matches on weekends. In 2024 she decided she needed proper training, so she added a "Training" subscription (€360/year). She now pays €120 + €360 = €480/year across 2 subscriptions._
   - _The Training season runs November–October (€400, duration=1 YEARS). Karl joins in March. The admin creates a subscription with `startDate=2026-03-01`, `endDate=2026-10-31`, `agreedPrice=267.00`. Next season, a new subscription is created with the full €400._
@@ -201,41 +290,44 @@ Links a member to a membership type for a **specific period**. One subscription 
 
 ### MembershipType
 
-| Field         | Type         | Constraints                                              |
-| ------------- | ------------ | -------------------------------------------------------- |
-| `id`          | `Long`       | TSID, auto-generated, unique                             |
-| `name`        | `String`     | Not null, not blank, unique, max 100 characters          |
-| `description` | `String`     | Optional, max 500 characters                             |
-| `price`       | `BigDecimal` | Not null, positive (> 0)                                 |
-| `duration`    | `Integer`    | Not null, positive — number of time units for the period |
-| `unitId`      | `Long`       | Not null, references Unit — the time unit for `duration` |
-| `statusId`    | `Long`       | Not null, references MembershipTypeStatus                |
+| Field          | Type         | Constraints                                                                  |
+| -------------- | ------------ | ---------------------------------------------------------------------------- |
+| `id`           | `Long`       | TSID, auto-generated, unique                                                 |
+| `name`         | `String`     | Not null, not blank, unique, max 100 characters                              |
+| `description`  | `String`     | Optional, max 500 characters                                                 |
+| `price`        | `BigDecimal` | Not null, positive (> 0)                                                     |
+| `duration`     | `Integer`    | Not null, positive — number of time units for the period                     |
+| `unitId`       | `Long`       | Not null, references Unit — the time unit for `duration`                     |
+| `statusId`     | `Long`       | Not null, references MembershipTypeStatus                                    |
+| `proratedMode` | `Boolean`    | Not null, default `false` — enables automatic proration for mid-period joins |
 
 **Business rules:**
 
-- `price` is the default price for one subscription period. It can be overridden per subscription via `agreedPrice`.
+- `price` is the default price for one subscription period. When a subscription is created without an explicit `agreedPrice`, the system copies this value into the subscription's `agreedPrice` (or auto-prorates it if `proratedMode` is true).
 - `duration` + `unit` define the **default period length**. When a subscription is created without an explicit `endDate`, the system computes `endDate = startDate + duration` (in the given unit). Examples: annual membership → `price=360.00, duration=1, unit=YEARS`; quarterly → `price=100.00, duration=3, unit=MONTHS`; 90-day pass → `price=80.00, duration=90, unit=DAYS`.
 - A membership type can be referenced by many subscriptions across many members.
 - When created, a membership type starts in `DRAFT` status. The administrator must explicitly activate it before subscriptions can be created.
 - **New subscriptions** can only be created against `ACTIVE` membership types. `DRAFT` and `INACTIVE` types reject subscription attempts.
 - **Existing subscriptions** are unaffected by status changes — if a membership type becomes `INACTIVE`, active subscriptions continue to their `endDate` and payments are still accepted.
 - Deleting a membership type is only allowed if no subscriptions (active or historical) reference it.
+- **Prorated mode**: When `proratedMode` is `true` and a subscription is created without an explicit `agreedPrice`, the system automatically calculates a prorated price based on the remaining time: `agreedPrice = price × (remaining_days / total_period_days)`, where `total_period_days` is the number of days in one full period (`duration` in the given `unit`) and `remaining_days` is the number of days from `startDate` to `endDate`. If the admin provides an explicit `agreedPrice`, it takes precedence over automatic proration. When `proratedMode` is `false` and the admin does not provide an explicit `agreedPrice`, the system copies the membership type’s current `price` into the subscription’s `agreedPrice`.
 
-### MembershipTypeTrainingSession (Join Table)
+### MembershipTypeSession (Join Table)
 
-Links which training sessions are included in a membership type. Replaces the former comma-separated `allowedTrainings` field with a proper normalized relationship.
+Links which sessions are included in a membership type. A membership type can grant access to training sessions, free game sessions, or a mix of both.
 
-| Field               | Type   | Constraints                                         |
-| ------------------- | ------ | --------------------------------------------------- |
-| `membershipTypeId`  | `Long` | Not null, references MembershipType (composite PK)  |
-| `trainingSessionId` | `Long` | Not null, references TrainingSession (composite PK) |
+| Field              | Type   | Constraints                                        |
+| ------------------ | ------ | -------------------------------------------------- |
+| `membershipTypeId` | `Long` | Not null, references MembershipType (composite PK) |
+| `sessionId`        | `Long` | Not null, references Session (composite PK)        |
 
 **Business rules:**
 
-- A membership type can include many training sessions.
-- A training session can belong to many membership types.
+- A membership type can include many sessions (of any `SessionType`).
+- A session can belong to many membership types.
 - This is a pure join table with a composite primary key — no TSID needed.
-- Membership type queries return associated training sessions via this relationship.
+- Membership type queries return associated sessions via this relationship.
+- Members discover which sessions are available to them through: `MemberSubscription → MembershipType → MembershipTypeSession → Session`.
 
 ### Payment
 
@@ -252,52 +344,106 @@ Links which training sessions are included in a membership type. Replaces the fo
 
 - A payment is linked to a **MemberSubscription**, which already captures the member and the membership type. No need to duplicate those foreign keys.
 - A subscription can have multiple payments (e.g. partial payments).
-- Outstanding dues per subscription = effective price − sum of all payments. Effective price = `agreedPrice` if set, otherwise the membership type's `price`.
+- Outstanding dues per subscription = `agreedPrice` − sum of all payments.
 
-### TrainingSession
+### Session
 
-| Field       | Type        | Constraints                             |
-| ----------- | ----------- | --------------------------------------- |
-| `id`        | `Long`      | TSID, auto-generated, unique            |
-| `name`      | `String`    | Not null, not blank, max 150 characters |
-| `dayOfWeek` | `DayOfWeek` | Not null (MONDAY–SUNDAY)                |
-| `startTime` | `LocalTime` | Not null                                |
-| `endTime`   | `LocalTime` | Not null, must be after `startTime`     |
-| `location`  | `String`    | Not null, not blank, max 200 characters |
-| `trainerId` | `Long`      | Not null, references a Trainer          |
+Represents a **recurring weekly schedule slot** for any club activity — training, free games, or future session types. A session defines _when_ and _where_ an activity happens on a weekly basis. Individual dated instances are materialized as `SessionOccurrence` records.
+
+| Field           | Type        | Constraints                                                                |
+| --------------- | ----------- | -------------------------------------------------------------------------- |
+| `id`            | `Long`      | TSID, auto-generated, unique                                               |
+| `name`          | `String`    | Not null, not blank, max 150 characters                                    |
+| `sessionTypeId` | `Long`      | Not null, references SessionType                                           |
+| `dayOfWeek`     | `DayOfWeek` | Not null (MONDAY–SUNDAY)                                                   |
+| `startTime`     | `LocalTime` | Not null                                                                   |
+| `endTime`       | `LocalTime` | Not null, must be after `startTime`                                        |
+| `location`      | `String`    | Not null, not blank, max 200 characters                                    |
+| `trainerId`     | `Long`      | Conditional: **required** for `TRAINING`, **must be null** for `FREE_GAME` |
 
 **Business rules:**
 
-- Training sessions recur weekly on the specified day.
+- Sessions recur weekly on the specified day.
 - `endTime` must be strictly after `startTime` (no overnight sessions in Phase 1).
-- A trainer can lead multiple sessions; a session has exactly one trainer.
+- A trainer can lead multiple sessions; a `TRAINING` session has exactly one trainer.
+- `FREE_GAME` sessions have no trainer — they represent open court/field time available to members.
+- **Trainer overlap validation**: When creating or updating a `TRAINING` session, the system must verify that the assigned trainer does not already have another session on the **same `dayOfWeek`** with an **overlapping time range** (`startTime`/`endTime`). Two sessions overlap if one's start is before the other's end and vice versa.
+- **Location overlap validation**: No two sessions may be scheduled on the same `dayOfWeek`, at the same `location`, with overlapping time ranges. This prevents double-booking a court or field.
+- The `sessionType` determines which validations apply and how the session is presented to members.
+
+### SessionOccurrence
+
+A **concrete, date-specific instance** of a `Session`. While `Session` defines the recurring weekly template, `SessionOccurrence` materializes each individual date on which the session actually takes place. This enables:
+
+- Tracking every occurrence (past and future) for both training and free game sessions.
+- Cancelling individual dates (e.g. holidays) without affecting the recurring template.
+- Logging trainer hours against a specific occurrence.
+- Showing members their upcoming schedule and next session reminder.
+
+| Field       | Type        | Constraints                                  |
+| ----------- | ----------- | -------------------------------------------- |
+| `id`        | `Long`      | TSID, auto-generated, unique                 |
+| `sessionId` | `Long`      | Not null, references Session                 |
+| `date`      | `LocalDate` | Not null                                     |
+| `statusId`  | `Long`      | Not null, references SessionOccurrenceStatus |
+| `notes`     | `String`    | Optional, max 500 characters                 |
+
+**Business rules:**
+
+- The `date` must correspond to the `dayOfWeek` of the referenced `Session` (e.g. a Monday session can only have occurrences on Mondays).
+- A session can have at most **one occurrence per date** — no duplicate (sessionId, date) pairs.
+- Occurrences are created either individually or in **bulk** via a date-range + weekday pattern (see `createSessionOccurrences` mutation).
+- New occurrences are created with status `SCHEDULED`.
+- An occurrence can transition: `SCHEDULED → CANCELLED`, `SCHEDULED → COMPLETED`. `CANCELLED` and `COMPLETED` are terminal — no further transitions.
+- **Cancellation**: Sets status to `CANCELLED`. Does not delete the row (preserves audit trail).
+- **Completion**: Sets status to `COMPLETED`. Trainer hours can only be logged against `COMPLETED` occurrences.
+- **Future occurrences**: Occurrences can be created for future dates (pre-scheduling a full season or semester).
+- **Past occurrences**: Occurrences for past dates can be created retroactively (e.g. backfilling records) with status `COMPLETED`.
+- Members see only `SCHEDULED` and `COMPLETED` occurrences for sessions linked to their active subscriptions. `CANCELLED` occurrences may be shown with a visual indicator but are excluded from the "next session" reminder logic.
 
 ### Trainer
 
-| Field         | Type     | Constraints                             |
-| ------------- | -------- | --------------------------------------- |
-| `id`          | `Long`   | TSID, auto-generated, unique            |
-| `firstName`   | `String` | Not null, not blank, max 100 characters |
-| `lastName`    | `String` | Not null, not blank, max 100 characters |
-| `email`       | `String` | Not null, valid email format, unique    |
-| `phoneNumber` | `String` | Optional                                |
-
-### TrainerLog (Training Hours)
-
-| Field               | Type         | Constraints                            |
-| ------------------- | ------------ | -------------------------------------- |
-| `id`                | `Long`       | TSID, auto-generated, unique           |
-| `trainerId`         | `Long`       | Not null, references a Trainer         |
-| `trainingSessionId` | `Long`       | Not null, references a TrainingSession |
-| `date`              | `LocalDate`  | Not null, must not be in the future    |
-| `hoursWorked`       | `BigDecimal` | Not null, positive, max 24             |
-| `notes`             | `String`     | Optional, max 500 characters           |
+| Field              | Type         | Constraints                                                                            |
+| ------------------ | ------------ | -------------------------------------------------------------------------------------- |
+| `id`               | `Long`       | TSID, auto-generated, unique                                                           |
+| `firstName`        | `String`     | Not null, not blank, max 100 characters                                                |
+| `lastName`         | `String`     | Not null, not blank, max 100 characters                                                |
+| `email`            | `String`     | Not null, valid email format, unique                                                   |
+| `phoneNumber`      | `String`     | Optional                                                                               |
+| `hourlyRate`       | `BigDecimal` | Not null, positive (> 0) — the trainer's rate per hour of work                         |
+| `paymentModeId`    | `Long`       | Not null, references TrainerPaymentMode — how the trainer is compensated               |
+| `autoApproveHours` | `Boolean`    | Not null, default `false` — if `true`, submitted hours are auto-approved by the system |
 
 **Business rules:**
 
-- A trainer log entry records that a trainer conducted a specific training session on a specific date.
-- The `date` must correspond to the `dayOfWeek` of the referenced training session.
-- Total hours per trainer can be aggregated by date range.
+- `hourlyRate` is the agreed rate at which the trainer is compensated. Total payment for an approved log = `hourlyRate × hoursWorked`.
+- `paymentMode` determines the settlement cadence: `PER_SESSION` means payment is due upon each approval; `MONTHLY` means approved hours are aggregated and settled at month end.
+- `autoApproveHours`: When `true`, any `logTrainerHours` or `submitTrainerHours` call for this trainer sets the log status directly to `APPROVED` instead of `PENDING`. This is useful for trusted, long-standing trainers where the admin does not want to manually approve each session.
+- When `autoApproveHours` is `false` (default), submitted hours start at `PENDING` and require explicit admin approval via the `approveTrainerLog` mutation.
+
+### TrainerLog (Training Hours)
+
+| Field                 | Type            | Constraints                                                             |
+| --------------------- | --------------- | ----------------------------------------------------------------------- |
+| `id`                  | `Long`          | TSID, auto-generated, unique                                            |
+| `trainerId`           | `Long`          | Not null, references a Trainer                                          |
+| `sessionOccurrenceId` | `Long`          | Not null, references a SessionOccurrence                                |
+| `hoursWorked`         | `BigDecimal`    | Not null, positive, max 24                                              |
+| `statusId`            | `Long`          | Not null, references TrainerLogStatus — approval state of this entry    |
+| `submittedAt`         | `LocalDateTime` | Not null, defaults to current timestamp — when the hours were submitted |
+| `reviewedAt`          | `LocalDateTime` | Optional — when the admin approved or rejected (null while `PENDING`)   |
+| `rejectionReason`     | `String`        | Optional, max 500 characters — reason provided by admin when rejecting  |
+| `notes`               | `String`        | Optional, max 500 characters                                            |
+
+**Business rules:**
+
+- A trainer log entry records that a trainer conducted a specific session on a specific date (via the occurrence).
+- The referenced `SessionOccurrence` must have status `COMPLETED`.
+- The referenced `SessionOccurrence` must belong to a `Session` of type `TRAINING` with the same `trainerId` as this log entry.
+- The `date` is derived from the `SessionOccurrence` — no separate date field needed on the log.
+- Total hours per trainer can be aggregated by date range (using the occurrence's `date`).
+- **Approval workflow**: New entries are created with status `PENDING` (or `APPROVED` if the trainer's `autoApproveHours` is `true`). The admin reviews pending entries and either approves or rejects them. Rejected entries can be resubmitted by the trainer (the log entry is updated in place — `hoursWorked` and `notes` are modified, status returns to `PENDING`, `rejectionReason` is cleared).
+- **Trainer payment calculation**: For `APPROVED` entries, the owed amount = `trainer.hourlyRate × hoursWorked`. The `trainerHours` query includes only `APPROVED` log entries in its aggregation. A separate `pendingTrainerLogs` query shows entries awaiting review.
 
 ---
 
@@ -311,21 +457,30 @@ Member
   └── MemberSubscription ──── MembershipType ── Unit
        │                          │            │
        │                          │         MembershipTypeStatus
-       │                   MembershipTypeTrainingSession ── TrainingSession
-       │                                                        │ (trainerId)
-       └── Payment                                           Trainer
-                                                                 │
-                                                            TrainerLog
-                                                    (trainerId + trainingSessionId)
+       │                   MembershipTypeSession ── Session ── SessionType
+       │                                               │
+       │                                               ├── SessionOccurrence ── SessionOccurrenceStatus
+       │                                               │        │
+       └── Payment                                     │   TrainerLog ── TrainerLogStatus
+                                                       │
+                                                    Trainer ── TrainerPaymentMode
 ```
 
 **Key relationships:**
 
 - `Member` 1──N `MemberSubscription` N──1 `MembershipType` (a member can hold many subscriptions)
 - `MemberSubscription` 1──N `Payment` (payments are per subscription)
-- `MembershipType` M──N `TrainingSession` (via join table)
+- `MembershipType` M──N `Session` (via `MembershipTypeSession` join table)
 - `MembershipType` N──1 `Unit` (each membership type has one time unit)
 - `MembershipType` N──1 `MembershipTypeStatus` (each membership type has one lifecycle status)
+- `Session` N──1 `SessionType` (each session has one type: TRAINING, FREE_GAME, etc.)
+- `Session` N──0..1 `Trainer` (only TRAINING sessions have a trainer)
+- `Session` 1──N `SessionOccurrence` (each session has many dated occurrences)
+- `SessionOccurrence` N──1 `SessionOccurrenceStatus` (SCHEDULED, CANCELLED, COMPLETED)
+- `TrainerLog` N──1 `SessionOccurrence` (trainer hours are logged per occurrence)
+- `TrainerLog` N──1 `Trainer`
+- `TrainerLog` N──1 `TrainerLogStatus` (PENDING, APPROVED, REJECTED)
+- `Trainer` N──1 `TrainerPaymentMode` (PER_SESSION, MONTHLY)
 - `Member` 1──N `MemberStatusHistory` N──1 `Status`
 
 ---
@@ -334,38 +489,52 @@ Member
 
 ### Queries
 
-| Query                    | Arguments                              | Returns                 | Description                                                                             |
-| ------------------------ | -------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------- |
-| `members`                | `status: String`                       | `[Member]`              | List all members, optionally filtered by current status                                 |
-| `memberById`             | `id: ID!`                              | `Member`                | Get a single member by ID (includes current status)                                     |
-| `memberStatusHistory`    | `memberId: ID!`                        | `[MemberStatusEntry]`   | Full status audit trail for a member                                                    |
-| `memberSubscriptions`    | `memberId: ID!, active: Boolean`       | `[MemberSubscription]`  | List subscriptions for a member, optionally filter by active state (`endDate >= today`) |
-| `membershipTypes`        | `status: String`                       | `[MembershipType]`      | List membership types, optionally filtered by status (e.g. `ACTIVE`)                    |
-| `paymentsBySubscription` | `memberSubscriptionId: ID!`            | `[Payment]`             | List all payments for a specific subscription                                           |
-| `paymentsByMember`       | `memberId: ID!`                        | `[Payment]`             | List all payments across all subscriptions for a member                                 |
-| `outstandingPayments`    | —                                      | `[MemberPaymentStatus]` | Active subscriptions with unpaid dues                                                   |
-| `trainingSessions`       | —                                      | `[TrainingSession]`     | List all training sessions                                                              |
-| `trainers`               | —                                      | `[Trainer]`             | List all trainers                                                                       |
-| `trainerHours`           | `trainerId: ID!, from: Date, to: Date` | `TrainerHoursSummary`   | Total hours worked by a trainer in a date range                                         |
+| Query                     | Arguments                                              | Returns                 | Description                                                                                   |
+| ------------------------- | ------------------------------------------------------ | ----------------------- | --------------------------------------------------------------------------------------------- |
+| `members`                 | `status: String`                                       | `[Member]`              | List all members, optionally filtered by current status                                       |
+| `memberById`              | `id: ID!`                                              | `Member`                | Get a single member by ID (includes current status)                                           |
+| `memberStatusHistory`     | `memberId: ID!`                                        | `[MemberStatusEntry]`   | Full status audit trail for a member                                                          |
+| `memberSubscriptions`     | `memberId: ID!, active: Boolean`                       | `[MemberSubscription]`  | List subscriptions for a member, optionally filter by active state (`endDate >= today`)       |
+| `membershipTypes`         | `status: String`                                       | `[MembershipType]`      | List membership types, optionally filtered by status (e.g. `ACTIVE`)                          |
+| `paymentsBySubscription`  | `memberSubscriptionId: ID!`                            | `[Payment]`             | List all payments for a specific subscription                                                 |
+| `paymentsByMember`        | `memberId: ID!`                                        | `[Payment]`             | List all payments across all subscriptions for a member                                       |
+| `outstandingPayments`     | —                                                      | `[MemberPaymentStatus]` | Active subscriptions with unpaid dues                                                         |
+| `sessions`                | `sessionType: String`                                  | `[Session]`             | List all sessions, optionally filtered by type (e.g. `TRAINING`, `FREE_GAME`)                 |
+| `sessionOccurrences`      | `sessionId: ID, from: Date, to: Date, status: String`  | `[SessionOccurrence]`   | List occurrences for a session within a date range, optionally filtered by status             |
+| `mySessions`              | `from: Date, to: Date, sessionType: String`            | `[SessionOccurrence]`   | Sessions available to the authenticated member via their active subscriptions                 |
+| `myNextSession`           | `sessionType: String`                                  | `SessionOccurrence`     | The next upcoming `SCHEDULED` occurrence for the authenticated member (for frontend reminder) |
+| `trainers`                | —                                                      | `[Trainer]`             | List all trainers                                                                             |
+| `availableTrainers`       | `dayOfWeek: String!, startTime: Time!, endTime: Time!` | `[Trainer]`             | Trainers not assigned to any session overlapping the given day + time range                   |
+| `trainerHours`            | `trainerId: ID!, from: Date, to: Date`                 | `TrainerHoursSummary`   | Total **approved** hours worked by a trainer in a date range                                  |
+| `pendingTrainerLogs`      | `trainerId: ID`                                        | `[TrainerLog]`          | Pending hour submissions; admin sees all or filters by trainer; trainer sees only own         |
+| `myTrainerPaymentSummary` | `from: Date!, to: Date!`                               | `TrainerPaymentSummary` | Approved hours × hourly rate for the authenticated trainer in a date range                    |
 
 ### Mutations
 
-| Mutation                       | Input                                           | Returns              | Description                                                        |
-| ------------------------------ | ----------------------------------------------- | -------------------- | ------------------------------------------------------------------ |
-| `createMember`                 | `CreateMemberInput!`                            | `Member`             | Register a new member (auto-creates ACTIVE status)                 |
-| `updateMember`                 | `id: ID!, UpdateMemberInput!`                   | `Member`             | Update member details                                              |
-| `changeMemberStatus`           | `ChangeMemberStatusInput!`                      | `MemberStatusEntry`  | Record a status transition with optional reason                    |
-| `deleteMember`                 | `id: ID!`                                       | `DeleteMemberResult` | GDPR erasure: anonymize personal data, end subscriptions           |
-| `subscribeMember`              | `SubscribeMemberInput!`                         | `MemberSubscription` | Subscribe a member to a membership type                            |
-| `endSubscription`              | `id: ID!`                                       | `MemberSubscription` | Early termination (sets `endDate` to today if still in the future) |
-| `createMembershipType`         | `CreateMembershipTypeInput!`                    | `MembershipType`     | Define a new membership type (starts as `DRAFT`)                   |
-| `changeMembershipTypeStatus`   | `id: ID!, status: String!`                      | `MembershipType`     | Transition membership type status (e.g. DRAFT → ACTIVE)            |
-| `assignTrainingToMembership`   | `membershipTypeId: ID!, trainingSessionId: ID!` | `MembershipType`     | Link a training session to a membership type                       |
-| `removeTrainingFromMembership` | `membershipTypeId: ID!, trainingSessionId: ID!` | `MembershipType`     | Unlink a training session from a membership type                   |
-| `recordPayment`                | `RecordPaymentInput!`                           | `Payment`            | Record a payment for a subscription                                |
-| `createTrainingSession`        | `CreateTrainingSessionInput!`                   | `TrainingSession`    | Create a recurring training session                                |
-| `createTrainer`                | `CreateTrainerInput!`                           | `Trainer`            | Register a new trainer                                             |
-| `logTrainerHours`              | `LogTrainerHoursInput!`                         | `TrainerLog`         | Log hours worked by a trainer for a session                        |
+| Mutation                      | Input                                   | Returns               | Description                                                                   |
+| ----------------------------- | --------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
+| `createMember`                | `CreateMemberInput!`                    | `Member`              | Register a new member (auto-creates ACTIVE status)                            |
+| `updateMember`                | `id: ID!, UpdateMemberInput!`           | `Member`              | Update member details                                                         |
+| `changeMemberStatus`          | `ChangeMemberStatusInput!`              | `MemberStatusEntry`   | Record a status transition with optional reason                               |
+| `deleteMember`                | `id: ID!`                               | `DeleteMemberResult`  | GDPR erasure: anonymize personal data, end subscriptions                      |
+| `subscribeMember`             | `SubscribeMemberInput!`                 | `MemberSubscription`  | Subscribe a member to a membership type                                       |
+| `endSubscription`             | `id: ID!`                               | `MemberSubscription`  | Early termination (sets `endDate` to today if still in the future)            |
+| `createMembershipType`        | `CreateMembershipTypeInput!`            | `MembershipType`      | Define a new membership type (starts as `DRAFT`)                              |
+| `changeMembershipTypeStatus`  | `id: ID!, status: String!`              | `MembershipType`      | Transition membership type status (e.g. DRAFT → ACTIVE)                       |
+| `assignSessionToMembership`   | `membershipTypeId: ID!, sessionId: ID!` | `MembershipType`      | Link a session to a membership type                                           |
+| `removeSessionFromMembership` | `membershipTypeId: ID!, sessionId: ID!` | `MembershipType`      | Unlink a session from a membership type                                       |
+| `recordPayment`               | `RecordPaymentInput!`                   | `Payment`             | Record a payment for a subscription                                           |
+| `createSession`               | `CreateSessionInput!`                   | `Session`             | Create a recurring session (training or free game)                            |
+| `createSessionOccurrences`    | `CreateSessionOccurrencesInput!`        | `[SessionOccurrence]` | Bulk-create occurrences for a session over a date range (calendar scheduling) |
+| `cancelSessionOccurrence`     | `id: ID!`                               | `SessionOccurrence`   | Cancel a specific occurrence (sets status to `CANCELLED`)                     |
+| `completeSessionOccurrence`   | `id: ID!`                               | `SessionOccurrence`   | Mark a specific occurrence as completed (sets status to `COMPLETED`)          |
+| `createTrainer`               | `CreateTrainerInput!`                   | `Trainer`             | Register a new trainer                                                        |
+| `updateTrainer`               | `id: ID!, UpdateTrainerInput!`          | `Trainer`             | Update trainer details (contact info, rate, payment mode, auto-approve)       |
+| `logTrainerHours`             | `LogTrainerHoursInput!`                 | `TrainerLog`          | Admin directly logs hours (status set to `APPROVED`, bypasses approval flow)  |
+| `submitTrainerHours`          | `SubmitTrainerHoursInput!`              | `TrainerLog`          | Trainer submits hours (status `PENDING` or auto-approved per trainer setting) |
+| `approveTrainerLog`           | `id: ID!`                               | `TrainerLog`          | Approve a pending trainer log entry (sets status to `APPROVED`)               |
+| `rejectTrainerLog`            | `RejectTrainerLogInput!`                | `TrainerLog`          | Reject a pending trainer log entry with a reason                              |
+| `resubmitTrainerLog`          | `ResubmitTrainerLogInput!`              | `TrainerLog`          | Resubmit corrected hours after rejection (resets to `PENDING`)                |
 
 ---
 
@@ -388,26 +557,37 @@ Member
 | `status`   | `String!` | Not null, must match an existing Status name |
 | `reason`   | `String`  | Optional, max 500 characters                 |
 
+### CreateMembershipTypeInput
+
+| Field          | Type          | Constraints                                                                      |
+| -------------- | ------------- | -------------------------------------------------------------------------------- |
+| `name`         | `String!`     | Not null, not blank, unique, max 100 characters                                  |
+| `description`  | `String`      | Optional, max 500 characters                                                     |
+| `price`        | `BigDecimal!` | Not null, positive (> 0)                                                         |
+| `duration`     | `Integer!`    | Not null, positive — number of time units for the period                         |
+| `unit`         | `String!`     | Not null, must match an existing Unit name (e.g. `DAYS`, `MONTHS`, `YEARS`)      |
+| `proratedMode` | `Boolean`     | Optional, defaults to `false` — enables automatic proration for mid-period joins |
+
 ### SubscribeMemberInput
 
-| Field              | Type         | Constraints                                                                                                          |
-| ------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `memberId`         | `ID!`        | Not null, references a Member                                                                                        |
-| `membershipTypeId` | `ID!`        | Not null, references a MembershipType                                                                                |
-| `startDate`        | `Date!`      | Not null, when the subscription period begins                                                                        |
-| `endDate`          | `Date`       | Optional; defaults to `startDate + duration` (in the membership type's unit). If provided, must be after `startDate` |
-| `agreedPrice`      | `BigDecimal` | Optional; prorated price — if null, full membership type price applies                                               |
+| Field              | Type         | Constraints                                                                                                                                                                                   |
+| ------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `memberId`         | `ID!`        | Not null, references a Member                                                                                                                                                                 |
+| `membershipTypeId` | `ID!`        | Not null, references a MembershipType                                                                                                                                                         |
+| `startDate`        | `Date!`      | Not null, when the subscription period begins                                                                                                                                                 |
+| `endDate`          | `Date`       | Optional; defaults to `startDate + duration` (in the membership type's unit). If provided, must be after `startDate`                                                                          |
+| `agreedPrice`      | `BigDecimal` | Optional; if null, the system populates from prorated calculation (when `proratedMode` is true) or the membership type’s current `price`. If provided, this explicit value is stored directly |
 
 ### MemberPaymentStatus (Response Type)
 
-| Field            | Type                 | Description                                                                                 |
-| ---------------- | -------------------- | ------------------------------------------------------------------------------------------- |
-| `member`         | `Member`             | The member                                                                                  |
-| `subscription`   | `MemberSubscription` | The active subscription                                                                     |
-| `membershipType` | `MembershipType`     | The membership type (via subscription)                                                      |
-| `amountDue`      | `BigDecimal`         | Expected amount for the current period (`agreedPrice` if set, else membership type `price`) |
-| `amountPaid`     | `BigDecimal`         | Total amount paid for the current period                                                    |
-| `outstanding`    | `BigDecimal`         | `amountDue - amountPaid`                                                                    |
+| Field            | Type                 | Description                                                               |
+| ---------------- | -------------------- | ------------------------------------------------------------------------- |
+| `member`         | `Member`             | The member                                                                |
+| `subscription`   | `MemberSubscription` | The active subscription                                                   |
+| `membershipType` | `MembershipType`     | The membership type (via subscription)                                    |
+| `amountDue`      | `BigDecimal`         | Expected amount for the current period (the subscription’s `agreedPrice`) |
+| `amountPaid`     | `BigDecimal`         | Total amount paid for the current period                                  |
+| `outstanding`    | `BigDecimal`         | `amountDue - amountPaid`                                                  |
 
 ### RecordPaymentInput
 
@@ -421,13 +601,14 @@ Member
 
 ### TrainerHoursSummary (Response Type)
 
-| Field          | Type         | Description                              |
-| -------------- | ------------ | ---------------------------------------- |
-| `trainer`      | `Trainer`    | The trainer                              |
-| `totalHours`   | `BigDecimal` | Sum of hours worked in the queried range |
-| `sessionCount` | `Int`        | Number of sessions logged                |
-| `from`         | `Date`       | Start of the queried range               |
-| `to`           | `Date`       | End of the queried range                 |
+| Field          | Type         | Description                                                 |
+| -------------- | ------------ | ----------------------------------------------------------- |
+| `trainer`      | `Trainer`    | The trainer                                                 |
+| `totalHours`   | `BigDecimal` | Sum of **approved** hours worked in the queried range       |
+| `sessionCount` | `Int`        | Number of approved sessions logged                          |
+| `totalOwed`    | `BigDecimal` | `totalHours × trainer.hourlyRate` — total compensation owed |
+| `from`         | `Date`       | Start of the queried range                                  |
+| `to`           | `Date`       | End of the queried range                                    |
 
 ### DeleteMemberResult (Response Type)
 
@@ -437,16 +618,127 @@ Member
 | `anonymizedAt`     | `DateTime` | Timestamp when the erasure was performed |
 | `fieldsAnonymized` | `[String]` | List of field names that were anonymized |
 
+### CreateSessionInput
+
+| Field         | Type      | Constraints                                                                      |
+| ------------- | --------- | -------------------------------------------------------------------------------- |
+| `name`        | `String!` | Not null, not blank, max 150 characters                                          |
+| `sessionType` | `String!` | Not null, must match an existing SessionType name (e.g. `TRAINING`, `FREE_GAME`) |
+| `dayOfWeek`   | `String!` | Not null (MONDAY–SUNDAY)                                                         |
+| `startTime`   | `Time!`   | Not null                                                                         |
+| `endTime`     | `Time!`   | Not null, must be after `startTime`                                              |
+| `location`    | `String!` | Not null, not blank, max 200 characters                                          |
+| `trainerId`   | `ID`      | Required if `sessionType` is `TRAINING`; must be null for `FREE_GAME`            |
+
+### CreateSessionOccurrencesInput
+
+Bulk-creates session occurrences for a date range. The backend generates one occurrence for each date in `[startDate, endDate]` that matches the session's `dayOfWeek`. This is designed to support a frontend calendar where the admin selects a date range (e.g. a semester or season) and the system fills in all weekly occurrences automatically.
+
+| Field       | Type     | Constraints                                                                                    |
+| ----------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `sessionId` | `ID!`    | Not null, references a Session                                                                 |
+| `startDate` | `Date!`  | Not null, the start of the date range (inclusive)                                              |
+| `endDate`   | `Date!`  | Not null, must be after `startDate`; the end of the date range (inclusive)                     |
+| `skipDates` | `[Date]` | Optional; specific dates within the range to exclude (e.g. public holidays, club-closed dates) |
+
+**Behavior:**
+
+- The backend iterates from `startDate` to `endDate`, selecting every date that matches the session's `dayOfWeek`.
+- Dates listed in `skipDates` are excluded.
+- If an occurrence already exists for a (sessionId, date) pair, it is **skipped** (idempotent — no error, no duplicate).
+- Returns the list of newly created occurrences (excludes already-existing ones).
+- Example: Session is on `MONDAY`, `startDate=2026-09-01`, `endDate=2026-12-31`, `skipDates=["2026-12-28"]` → creates ~16 Monday occurrences (minus the skipped holiday).
+
+### LogTrainerHoursInput
+
+| Field                 | Type          | Constraints                                                      |
+| --------------------- | ------------- | ---------------------------------------------------------------- |
+| `trainerId`           | `ID!`         | Not null, references a Trainer                                   |
+| `sessionOccurrenceId` | `ID!`         | Not null, references a SessionOccurrence with status `COMPLETED` |
+| `hoursWorked`         | `BigDecimal!` | Not null, positive, max 24                                       |
+| `notes`               | `String`      | Optional                                                         |
+
+**Behavior:** Admin-only. Sets status directly to `APPROVED` (no approval workflow). Sets `submittedAt` and `reviewedAt` to current timestamp.
+
+### SubmitTrainerHoursInput
+
+| Field                 | Type          | Constraints                                                      |
+| --------------------- | ------------- | ---------------------------------------------------------------- |
+| `sessionOccurrenceId` | `ID!`         | Not null, references a SessionOccurrence with status `COMPLETED` |
+| `hoursWorked`         | `BigDecimal!` | Not null, positive, max 24                                       |
+| `notes`               | `String`      | Optional                                                         |
+
+**Behavior:** The `trainerId` is inferred from the authenticated trainer (TRAINER role) or must be provided by admin. If the trainer's `autoApproveHours` is `true`, status is set to `APPROVED` and `reviewedAt` is populated. Otherwise, status is `PENDING`.
+
+### RejectTrainerLogInput
+
+| Field    | Type      | Constraints                                                  |
+| -------- | --------- | ------------------------------------------------------------ |
+| `id`     | `ID!`     | Not null, references a TrainerLog                            |
+| `reason` | `String!` | Not null, max 500 characters — required reason for rejection |
+
+### ResubmitTrainerLogInput
+
+| Field         | Type          | Constraints                                              |
+| ------------- | ------------- | -------------------------------------------------------- |
+| `id`          | `ID!`         | Not null, references a TrainerLog with status `REJECTED` |
+| `hoursWorked` | `BigDecimal!` | Not null, positive, max 24 — corrected hours             |
+| `notes`       | `String`      | Optional — updated notes                                 |
+
+**Behavior:** Updates the existing log entry in place: sets `hoursWorked` and `notes` to new values, clears `rejectionReason`, resets status to `PENDING` (or `APPROVED` if `autoApproveHours`), clears `reviewedAt`.
+
+### CreateTrainerInput
+
+| Field              | Type          | Constraints                                                             |
+| ------------------ | ------------- | ----------------------------------------------------------------------- |
+| `firstName`        | `String!`     | Not null, not blank, max 100 characters                                 |
+| `lastName`         | `String!`     | Not null, not blank, max 100 characters                                 |
+| `email`            | `String!`     | Not null, valid email format, unique                                    |
+| `phoneNumber`      | `String`      | Optional                                                                |
+| `hourlyRate`       | `BigDecimal!` | Not null, positive (> 0)                                                |
+| `paymentMode`      | `String!`     | Not null, must match TrainerPaymentMode (e.g. `PER_SESSION`, `MONTHLY`) |
+| `autoApproveHours` | `Boolean`     | Optional, defaults to `false`                                           |
+
+### UpdateTrainerInput
+
+| Field              | Type         | Constraints                                                    |
+| ------------------ | ------------ | -------------------------------------------------------------- |
+| `firstName`        | `String`     | Optional, max 100 characters                                   |
+| `lastName`         | `String`     | Optional, max 100 characters                                   |
+| `email`            | `String`     | Optional, valid email format, unique                           |
+| `phoneNumber`      | `String`     | Optional                                                       |
+| `hourlyRate`       | `BigDecimal` | Optional, positive (> 0) — **admin-only field**                |
+| `paymentMode`      | `String`     | Optional, must match TrainerPaymentMode — **admin-only field** |
+| `autoApproveHours` | `Boolean`    | Optional — **admin-only field**                                |
+
+**Behavior:** Trainers can update only `firstName`, `lastName`, `email`, `phoneNumber`. Attempting to change `hourlyRate`, `paymentMode`, or `autoApproveHours` as a TRAINER returns an authorization error. Admin can update all fields.
+
+### TrainerPaymentSummary (Response Type)
+
+| Field              | Type         | Description                                             |
+| ------------------ | ------------ | ------------------------------------------------------- |
+| `trainer`          | `Trainer`    | The trainer                                             |
+| `from`             | `Date`       | Start of the queried range                              |
+| `to`               | `Date`       | End of the queried range                                |
+| `approvedHours`    | `BigDecimal` | Sum of approved hours in the range                      |
+| `approvedSessions` | `Int`        | Count of approved log entries                           |
+| `hourlyRate`       | `BigDecimal` | The trainer's current hourly rate                       |
+| `totalOwed`        | `BigDecimal` | `approvedHours × hourlyRate`                            |
+| `paymentMode`      | `String`     | The trainer's payment mode (`PER_SESSION` or `MONTHLY`) |
+| `pendingHours`     | `BigDecimal` | Sum of hours in `PENDING` status (not yet approved)     |
+| `pendingSessions`  | `Int`        | Count of pending log entries                            |
+
 ---
 
 ## Authorization & Roles
 
-Phase 1 defines two roles. Authentication itself (login, tokens, identity provider) is out of scope for Phase 1 — the system assumes the caller's role is already resolved by the infrastructure layer.
+Phase 1 defines three roles. Authentication itself (login, tokens, identity provider) is out of scope for Phase 1 — the system assumes the caller's role is already resolved by the infrastructure layer.
 
-| Role       | Description                                                                                                                                      |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **ADMIN**  | Club administrator. Full access to all operations — manages members, membership types, subscriptions, payments, training sessions, and trainers. |
-| **MEMBER** | A registered club member. Can view their own data (profile, subscriptions, payments, training schedule).                                         |
+| Role        | Description                                                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **ADMIN**   | Club administrator. Full access to all operations — manages members, membership types, subscriptions, payments, sessions, and trainers. |
+| **MEMBER**  | A registered club member. Can view their own data (profile, subscriptions, payments, training schedule).                                |
+| **TRAINER** | A registered trainer. Can submit their own hours, view their own sessions and log history, and view their payment summary.              |
 
 ### Operation Access Matrix
 
@@ -454,47 +746,67 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 
 #### Queries
 
-| Query                    | ADMIN | MEMBER | Notes                                                      |
-| ------------------------ | :---: | :----: | ---------------------------------------------------------- |
-| `members`                |   ✓   |        | Admin-only — list all members                              |
-| `memberById`             |   ✓   |   ✓    | Members can only query their own ID                        |
-| `memberStatusHistory`    |   ✓   |   ✓    | Members can only view their own history                    |
-| `memberSubscriptions`    |   ✓   |   ✓    | Members can only view their own subscriptions              |
-| `membershipTypes`        |   ✓   |   ✓    | Members see only `ACTIVE` types; admins see all statuses   |
-| `paymentsBySubscription` |   ✓   |   ✓    | Members can only view payments for their own subscriptions |
-| `paymentsByMember`       |   ✓   |   ✓    | Members can only query their own payments                  |
-| `outstandingPayments`    |   ✓   |        | Admin-only — aggregated view across all members            |
-| `trainingSessions`       |   ✓   |   ✓    | Read-only for both roles                                   |
-| `trainers`               |   ✓   |   ✓    | Read-only for both roles                                   |
-| `trainerHours`           |   ✓   |        | Admin-only — trainer hour tracking                         |
+| Query                     | ADMIN | MEMBER | TRAINER | Notes                                                                     |
+| ------------------------- | :---: | :----: | :-----: | ------------------------------------------------------------------------- |
+| `members`                 |   ✓   |        |         | Admin-only — list all members                                             |
+| `memberById`              |   ✓   |   ✓    |         | Members can only query their own ID                                       |
+| `memberStatusHistory`     |   ✓   |   ✓    |         | Members can only view their own history                                   |
+| `memberSubscriptions`     |   ✓   |   ✓    |         | Members can only view their own subscriptions                             |
+| `membershipTypes`         |   ✓   |   ✓    |         | Members see only `ACTIVE` types; admins see all statuses                  |
+| `paymentsBySubscription`  |   ✓   |   ✓    |         | Members can only view payments for their own subscriptions                |
+| `paymentsByMember`        |   ✓   |   ✓    |         | Members can only query their own payments                                 |
+| `outstandingPayments`     |   ✓   |        |         | Admin-only — aggregated view across all members                           |
+| `sessions`                |   ✓   |   ✓    |    ✓    | Read-only for all roles                                                   |
+| `sessionOccurrences`      |   ✓   |   ✓    |    ✓    | Read-only for all roles; members/trainers can browse all occurrences      |
+| `mySessions`              |   ✓   |   ✓    |    ✓    | Members: via subscriptions; trainers: sessions they are assigned to       |
+| `myNextSession`           |   ✓   |   ✓    |    ✓    | Next upcoming session for the authenticated member or trainer             |
+| `trainers`                |   ✓   |   ✓    |    ✓    | Read-only for all roles                                                   |
+| `availableTrainers`       |   ✓   |        |         | Admin-only — used when creating TRAINING sessions                         |
+| `trainerHours`            |   ✓   |        |    ✓    | Admin sees any trainer; trainers see only their own                       |
+| `pendingTrainerLogs`      |   ✓   |        |    ✓    | Admin sees all pending; trainers see only their own pending submissions   |
+| `myTrainerPaymentSummary` |   ✓   |        |    ✓    | Trainer's payment summary (approved hours × hourly rate) for a date range |
 
 #### Mutations
 
-| Mutation                       | ADMIN | MEMBER | Notes                                                                                    |
-| ------------------------------ | :---: | :----: | ---------------------------------------------------------------------------------------- |
-| `createMember`                 |   ✓   |        | Admin registers new members                                                              |
-| `updateMember`                 |   ✓   |   ✓    | Members can update their own contact details (email, phone); admin can update any member |
-| `changeMemberStatus`           |   ✓   |        | Admin-only — status transitions                                                          |
-| `deleteMember`                 |   ✓   |   ✓    | Members can request their own GDPR erasure; admin can erase any member                   |
-| `subscribeMember`              |   ✓   |        | Admin-only — controls who subscribes and at what price                                   |
-| `endSubscription`              |   ✓   |        | Admin-only — early termination                                                           |
-| `createMembershipType`         |   ✓   |        | Admin-only                                                                               |
-| `changeMembershipTypeStatus`   |   ✓   |        | Admin-only                                                                               |
-| `assignTrainingToMembership`   |   ✓   |        | Admin-only                                                                               |
-| `removeTrainingFromMembership` |   ✓   |        | Admin-only                                                                               |
-| `recordPayment`                |   ✓   |        | Admin-only — payment recording                                                           |
-| `createTrainingSession`        |   ✓   |        | Admin-only                                                                               |
-| `createTrainer`                |   ✓   |        | Admin-only                                                                               |
-| `logTrainerHours`              |   ✓   |        | Admin-only — trainer hour logging                                                        |
+| Mutation                      | ADMIN | MEMBER | TRAINER | Notes                                                                                     |
+| ----------------------------- | :---: | :----: | :-----: | ----------------------------------------------------------------------------------------- |
+| `createMember`                |   ✓   |        |         | Admin registers new members                                                               |
+| `updateMember`                |   ✓   |   ✓    |         | Members can update their own contact details (email, phone); admin can update any member  |
+| `changeMemberStatus`          |   ✓   |        |         | Admin-only — status transitions                                                           |
+| `deleteMember`                |   ✓   |   ✓    |         | Members can request their own GDPR erasure; admin can erase any member                    |
+| `subscribeMember`             |   ✓   |        |         | Admin-only — controls who subscribes and at what price                                    |
+| `endSubscription`             |   ✓   |        |         | Admin-only — early termination                                                            |
+| `createMembershipType`        |   ✓   |        |         | Admin-only                                                                                |
+| `changeMembershipTypeStatus`  |   ✓   |        |         | Admin-only                                                                                |
+| `assignSessionToMembership`   |   ✓   |        |         | Admin-only                                                                                |
+| `removeSessionFromMembership` |   ✓   |        |         | Admin-only                                                                                |
+| `recordPayment`               |   ✓   |        |         | Admin-only — member payment recording                                                     |
+| `createSession`               |   ✓   |        |         | Admin-only — create session templates                                                     |
+| `createSessionOccurrences`    |   ✓   |        |         | Admin-only — bulk calendar scheduling                                                     |
+| `cancelSessionOccurrence`     |   ✓   |        |         | Admin-only — cancel individual occurrences                                                |
+| `completeSessionOccurrence`   |   ✓   |        |         | Admin-only — mark occurrences as completed                                                |
+| `createTrainer`               |   ✓   |        |         | Admin-only                                                                                |
+| `updateTrainer`               |   ✓   |        |    ✓    | Trainers update own contact details; admin updates any trainer including rate/mode        |
+| `logTrainerHours`             |   ✓   |        |         | Admin-only — directly log hours (bypasses approval if desired)                            |
+| `submitTrainerHours`          |   ✓   |        |    ✓    | Trainer submits own hours; starts as PENDING (or auto-approved). Admin can submit for any |
+| `approveTrainerLog`           |   ✓   |        |         | Admin-only — approve pending hours                                                        |
+| `rejectTrainerLog`            |   ✓   |        |         | Admin-only — reject pending hours with a reason                                           |
+| `resubmitTrainerLog`          |   ✓   |        |    ✓    | Trainer resubmits corrected hours after rejection. Admin can do for any                   |
+
+> **Note:** `updateTrainer` has no MEMBER column entry because members and trainers are independent roles — a member is not a trainer.
 
 ### Authorization Rules
 
 1. **Admin-only pricing**: Only an admin can set or override `agreedPrice` when creating a subscription. This ensures that proration decisions are made by the club, not by the member.
 2. **Admin-only subscription management**: Only an admin can create, renew, or terminate subscriptions. Members cannot self-subscribe or self-terminate in Phase 1.
-3. **Member self-service scope**: A member can view their own profile, subscriptions, payment history, and the training schedule. They can update their own contact details (email, phone number) and request their own GDPR erasure.
+3. **Member self-service scope**: A member can view their own profile, subscriptions, payment history, and their available session schedule. They can update their own contact details (email, phone number) and request their own GDPR erasure.
 4. **Member data isolation**: When a member queries `memberById`, `memberSubscriptions`, `paymentsByMember`, or `paymentsBySubscription`, the system enforces that the requested data belongs to the authenticated member. Attempting to access another member's data returns an authorization error.
 5. **Membership type visibility**: Members see only `ACTIVE` membership types via `membershipTypes`. `DRAFT` and `INACTIVE` types are hidden from members — they are administrative concerns.
-6. **Future self-service (out of scope)**: Phase 2 may introduce member self-registration, online payment, and subscription renewal requests. Phase 1 assumes all write operations go through an administrator.
+6. **Session visibility for members**: Members can see all sessions and occurrences via `sessions`/`sessionOccurrences` (public schedule), but `mySessions` and `myNextSession` filter to only sessions linked to the member's active subscriptions. Attendance is voluntary — the system only informs, it does not enforce.
+7. **Trainer self-service scope**: A trainer can submit their own hours (`submitTrainerHours`), view their own pending/approved/rejected logs (`pendingTrainerLogs`, `trainerHours`), view their payment summary (`myTrainerPaymentSummary`), view their assigned sessions (`mySessions`, `myNextSession`), and update their own contact details (`updateTrainer` — limited to `firstName`, `lastName`, `email`, `phoneNumber`). A trainer **cannot** modify their own `hourlyRate`, `paymentMode`, or `autoApproveHours` — those are admin-only fields.
+8. **Trainer data isolation**: When a trainer queries `trainerHours`, `pendingTrainerLogs`, or `myTrainerPaymentSummary`, the system enforces that the data belongs to the authenticated trainer. Attempting to access another trainer's data returns an authorization error.
+9. **Admin approval authority**: Only an admin can approve or reject trainer hour submissions (`approveTrainerLog`, `rejectTrainerLog`). The admin can also directly log hours (`logTrainerHours`) which bypasses the approval workflow entirely (status is set to `APPROVED` immediately).
+10. **Future self-service (out of scope)**: Phase 2 may introduce member self-registration, online payment, and subscription renewal requests. Phase 1 assumes all member write operations go through an administrator.
 
 ---
 
@@ -526,44 +838,73 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 13. **Future payment date**: Allowed — a payment can be recorded in advance.
 14. **Overpayment**: The system records actuals; overpayment simply results in `outstanding ≤ 0`.
 15. **Zero amount**: Not allowed — amount must be strictly positive.
-16. **Outstanding calculation**: Per subscription: effective price (`agreedPrice` if set, else membership type `price`) minus the sum of all payments linked to that subscription. No rolling-period logic — each subscription is a single billing period.
+16. **Outstanding calculation**: Per subscription: `agreedPrice` minus the sum of all payments linked to that subscription. No rolling-period logic — each subscription is a single billing period.
 
 ### Prorated Pricing
 
-17. **agreedPrice semantics**: `agreedPrice` on `MemberSubscription` overrides the membership type's `price` for that specific subscription. It is intended for mid-period joins where the administrator calculates a reduced fee externally.
-18. **Null means full price**: If `agreedPrice` is null, the membership type's `price` is used for billing calculations.
-19. **No automatic proration**: The system does not calculate prorated amounts. The administrator determines the prorated price and provides it when creating the subscription.
-20. **Renewal**: When a subscription is renewed (new subscription for the next period), `agreedPrice` on the new subscription should typically be null (full price) unless the administrator explicitly sets it again.
+17. **agreedPrice semantics**: `agreedPrice` on `MemberSubscription` is not null — it is always populated at subscription creation and represents the locked-in billing amount for that subscription period. Once stored, it is immutable and not affected by later changes to the membership type's `price`.
+18. **Default price (non-prorated mode)**: If the admin does not provide an explicit `agreedPrice` and `proratedMode` is `false`, the system copies the membership type's current `price` into the subscription's `agreedPrice`.
+19. **Automatic proration**: When `proratedMode` is `true` on the membership type and the admin does not provide an explicit `agreedPrice`, the system automatically calculates: `agreedPrice = price × (remaining_days / total_period_days)`. This is computed at subscription creation time and stored on the `MemberSubscription` record. The formula uses calendar days. Example: membership type costs €365/year (365 days), member subscribes on July 1 with `endDate` = Dec 31 → 184 remaining days → `agreedPrice = 365 × (184/365) = €184.00`.
+20. **Manual override always wins**: If the admin provides an explicit `agreedPrice` when creating a subscription, it takes precedence regardless of `proratedMode`. This allows the admin to negotiate special prices.
+21. **Renewal**: When a subscription is renewed (new subscription for the next period), the admin can omit `agreedPrice` in the input — the system will populate it from the membership type's price (or prorated calculation if applicable). The admin can also provide an explicit override.
 
 ### Membership Types
 
-21. **Training session linkage**: Adding or removing training sessions from a membership type uses dedicated mutations — no comma-separated fields.
-22. **Duration semantics**: `duration` + `unit` define the default period length for new subscriptions. They are not used in billing calculations — billing uses the subscription's own `startDate`/`endDate` and effective price.
-23. **Status transitions**: Only valid transitions are allowed: `DRAFT → ACTIVE`, `ACTIVE → INACTIVE`, `INACTIVE → ACTIVE`, `DRAFT → INACTIVE`. Transitioning back to `DRAFT` is not allowed.
-24. **INACTIVE with existing subscriptions**: Changing a membership type to `INACTIVE` does not end existing subscriptions. They continue to their `endDate` and payments are still accepted.
+22. **Session linkage**: Adding or removing sessions from a membership type uses dedicated mutations (`assignSessionToMembership` / `removeSessionFromMembership`). A membership type can include sessions of any type (training, free games, or a mix).
+23. **Duration semantics**: `duration` + `unit` define the default period length for new subscriptions. They are not used in billing calculations — billing uses the subscription's own `startDate`/`endDate` and `agreedPrice`.
+24. **Status transitions**: Only valid transitions are allowed: `DRAFT → ACTIVE`, `ACTIVE → INACTIVE`, `INACTIVE → ACTIVE`, `DRAFT → INACTIVE`. Transitioning back to `DRAFT` is not allowed.
+25. **INACTIVE with existing subscriptions**: Changing a membership type to `INACTIVE` does not end existing subscriptions. They continue to their `endDate` and payments are still accepted.
 
-### Training Sessions
+### Sessions
 
-25. **Time ordering**: `endTime` must be after `startTime`; same value is invalid.
-26. **Invalid day-of-week in log**: A trainer log entry's `date` must fall on the same weekday as the referenced session's `dayOfWeek`.
-27. **Future date logging**: Trainer hours cannot be logged for a future date.
+26. **Time ordering**: `endTime` must be after `startTime`; same value is invalid.
+27. **Session type determines trainer requirement**: `TRAINING` sessions must have a non-null `trainerId`. `FREE_GAME` sessions must have `trainerId` as `null`. Mismatched values return a validation error.
+28. **Trainer overlap**: A trainer cannot be assigned to two sessions on the same `dayOfWeek` with overlapping time ranges. The system checks this when creating or updating a session. Two sessions overlap if `session1.startTime < session2.endTime AND session2.startTime < session1.endTime`.
+29. **Location overlap**: No two sessions may share the same `dayOfWeek` + `location` with overlapping time ranges. This prevents double-booking a court, field, or hall.
+30. **Session immutability**: Once a session has occurrences (past or future), its `dayOfWeek`, `startTime`, `endTime`, and `sessionType` cannot be changed. To reschedule, create a new session and generate new occurrences.
+
+### Session Occurrences
+
+31. **Day-of-week consistency**: A session occurrence's `date` must fall on the same weekday as the referenced session's `dayOfWeek`.
+32. **Uniqueness**: No duplicate `(sessionId, date)` pairs. Bulk creation skips already-existing dates silently (idempotent).
+33. **Status transitions**: `SCHEDULED → CANCELLED`, `SCHEDULED → COMPLETED`. Both `CANCELLED` and `COMPLETED` are terminal.
+34. **Bulk creation (calendar scheduling)**: The `createSessionOccurrences` mutation generates one occurrence per matching weekday in a date range. The admin provides `startDate`, `endDate`, and optionally `skipDates` (holidays). This supports the frontend calendar workflow where the admin schedules an entire season or semester at once.
+35. **Cancellation**: Cancelling an occurrence does not affect other occurrences or the session template. The cancelled occurrence remains in the database for audit purposes.
+36. **Trainer hours require COMPLETED**: Trainer hours (`logTrainerHours`) can only be logged against occurrences with status `COMPLETED`. Attempting to log against `SCHEDULED` or `CANCELLED` returns an error.
+37. **Future occurrences**: Pre-scheduling future dates is allowed and encouraged (e.g. schedule all Mondays for the next semester).
+38. **Member visibility**: Members discover available sessions through their subscriptions: `MemberSubscription → MembershipType → MembershipTypeSession → Session → SessionOccurrence`. The `mySessions` query resolves this chain. The `myNextSession` query returns the nearest upcoming `SCHEDULED` occurrence. Attendance is voluntary — the system informs but does not track whether a member actually attended.
 
 ### Trainers
 
-28. **Duplicate email**: Same uniqueness constraint as members.
-29. **Trainer deletion**: Not in scope for Phase 1 — trainers can only be created, not removed.
+39. **Duplicate email**: Same uniqueness constraint as members.
+40. **Trainer deletion**: Not in scope for Phase 1 — trainers can only be created, not removed.
+41. **Hourly rate**: The `hourlyRate` on Trainer is the contractual rate. Changes to `hourlyRate` apply only to **future** log entries — already-approved hours are not retroactively recalculated.
+42. **Payment mode**: `PER_SESSION` means the trainer's compensation is due after each `APPROVED` log entry. `MONTHLY` means approved hours are aggregated at month end. The system tracks what is owed; actual disbursement is out of scope for Phase 1 (handled externally via bank transfer, etc.).
+
+### Trainer Hour Submissions & Approval
+
+43. **Submission**: Trainers submit hours via `submitTrainerHours`. The system validates that the referenced `SessionOccurrence` is `COMPLETED`, belongs to a `TRAINING` session assigned to this trainer, and that no existing log entry already exists for the same (trainerId, sessionOccurrenceId) pair.
+44. **Duplicate log prevention**: At most one `TrainerLog` entry per (trainerId, sessionOccurrenceId) pair. Attempting to submit hours for an occurrence that already has a log entry (regardless of status) returns a validation error.
+45. **Auto-approval**: When `autoApproveHours` is `true` on the trainer, `submitTrainerHours` sets the log status directly to `APPROVED` and populates `reviewedAt`. No admin action is required. This is a per-trainer setting — the admin can enable or disable it at any time via `updateTrainer`.
+46. **Manual approval**: When `autoApproveHours` is `false`, submitted hours start at `PENDING`. The admin must call `approveTrainerLog` or `rejectTrainerLog`. The `pendingTrainerLogs` query shows all entries awaiting review.
+47. **Rejection**: When the admin rejects a log entry, a `rejectionReason` must be provided (not blank). The trainer can see the reason and resubmit corrected hours via `resubmitTrainerLog`.
+48. **Resubmission**: `resubmitTrainerLog` updates the existing entry in place (does not create a new row). Only `REJECTED` entries can be resubmitted. The status resets to `PENDING` (or `APPROVED` if `autoApproveHours`), `rejectionReason` is cleared, and `reviewedAt` is reset.
+49. **Approved is terminal**: Once a log entry is `APPROVED`, it cannot be changed — not unapproved, not modified, not deleted. If a correction is needed, the admin must handle it manually (out of scope for Phase 1).
+50. **Admin direct logging**: `logTrainerHours` (admin-only) bypasses the approval workflow entirely — the entry is created with status `APPROVED` and both `submittedAt` and `reviewedAt` set to the current timestamp. This is intended for retroactive corrections or when the admin logs hours on behalf of the trainer.
+51. **Payment calculation**: For any date range, the trainer's total owed = sum of (`hoursWorked × trainer.hourlyRate`) across all `APPROVED` log entries within that range. The `trainerHours` and `myTrainerPaymentSummary` queries expose this calculation.
 
 ### GDPR — Right to Erasure (Art. 17 DSGVO)
 
-30. **Anonymization, not physical deletion**: A member's row is **not** deleted. Instead, all personal data fields are overwritten with anonymized values to preserve referential integrity (foreign keys from payments, subscriptions, status history). This is compliant with Art. 17 because no personal data remains that could identify the individual.
-31. **Anonymized values**: `firstName` → `"DELETED"`, `lastName` → `"DELETED"`, `email` → `"deleted-{id}@anonymous.local"` (keeps uniqueness constraint satisfied), `phoneNumber` → `null`.
-32. **Status history anonymization**: The `reason` field in all `MemberStatusHistory` entries for the member is set to `null` (may contain free-text personal data). A final `DELETED` status entry is added.
-33. **Subscription deactivation**: All active subscriptions for the member are ended (`endDate` = today).
-34. **Payment records retained**: Payment rows are **not** deleted or anonymized. Austrian tax law (BAO §132) requires financial records to be retained for 7 years. Since `Payment` links to `MemberSubscription` (not directly to personal data), no personal information leaks through payment records after anonymization.
-35. **Idempotency**: Calling `deleteMember` on an already-deleted member (status = `DELETED`) returns success without further changes.
-36. **No recovery**: Anonymization is irreversible. The mutation should require explicit confirmation or be clearly documented as a destructive action.
-37. **Terminal status**: Once a member has status `DELETED`, no further status transitions, updates, or new subscriptions are allowed.
-38. **Trainer erasure**: Not in scope for Phase 1. Trainers who request erasure will be handled manually or in a future phase.
+52. **Anonymization, not physical deletion (immediate step)**: When `deleteMember` is called, the member's row is **not** physically deleted. Instead, all personal data fields are overwritten with anonymized values to preserve referential integrity (foreign keys from payments, subscriptions, status history). This is compliant with Art. 17 because no personal data remains that could identify the individual.
+53. **Anonymized values**: `firstName` → `"DELETED"`, `lastName` → `"DELETED"`, `email` → `"deleted-{id}@anonymous.local"` (keeps uniqueness constraint satisfied), `phoneNumber` → `null`.
+54. **Status history anonymization**: The `reason` field in all `MemberStatusHistory` entries for the member is set to `null` (may contain free-text personal data). A final `DELETED` status entry is added.
+55. **Subscription deactivation**: All active subscriptions for the member are ended (`endDate` = today).
+56. **Payment records retained**: Payment rows are **not** deleted or anonymized. Austrian tax law (BAO §132) requires financial records to be retained for 7 years. Since `Payment` links to `MemberSubscription` (not directly to personal data), no personal information leaks through payment records after anonymization. Payments survive the purge job (see rule 61) — `MemberSubscription` rows referenced by payments are retained as orphaned records with no link back to personal data.
+57. **Idempotency**: Calling `deleteMember` on an already-deleted member (status = `DELETED`) returns success without further changes.
+58. **No recovery**: Anonymization is irreversible. The mutation should require explicit confirmation or be clearly documented as a destructive action.
+59. **Terminal status**: Once a member has status `DELETED`, no further status transitions, updates, or new subscriptions are allowed. The member is effectively frozen until the purge job removes the row.
+60. **Trainer erasure**: Not in scope for Phase 1. Trainers who request erasure will be handled manually or in a future phase.
+61. **Scheduled purge job**: A configurable scheduled job (`cron`) runs periodically (default: every 24 hours) and **hard-deletes** all member rows that have been in `DELETED` status for longer than a configurable retention period (default: 30 days). The retention period allows the admin to detect accidental erasures before permanent removal. The purge cascades in order: `MemberStatusHistory` entries → `MemberSubscription` rows that have **no** associated `Payment` records → the `Member` row itself. `MemberSubscription` rows that still have `Payment` records are **retained** (with their `memberId` set to `null` or left as a dangling reference — the payment retention obligation under BAO §132 takes precedence). Both the schedule interval and the retention period are externalized as application configuration properties (`app.gdpr.purge-cron` and `app.gdpr.retention-days`).
 
 ---
 
@@ -743,7 +1084,7 @@ query {
             "unit": { "name": "YEARS" }
           },
           "startDate": "2010-09-01",
-          "agreedPrice": null
+          "agreedPrice": 120.0
         },
         {
           "membershipType": {
@@ -753,7 +1094,7 @@ query {
             "unit": { "name": "YEARS" }
           },
           "startDate": "2024-01-01",
-          "agreedPrice": null
+          "agreedPrice": 360.0
         }
       ]
     }
@@ -805,7 +1146,7 @@ query {
           "id": "38792587163700",
           "startDate": "2010-09-01",
           "endDate": "2011-08-31",
-          "agreedPrice": null
+          "agreedPrice": 120.0
         },
         "membershipType": {
           "name": "Free Games",
@@ -840,7 +1181,7 @@ query {
 }
 ```
 
-Note: Karl's `amountDue` is €267 (his `agreedPrice`), not the full €400. Outstanding = effective price − sum of payments.
+Note: Karl's `amountDue` is €267 (his `agreedPrice`), not the full €400. Outstanding = `agreedPrice` − sum of payments.
 
 ### Example 6 — Change member status with reason
 
@@ -863,46 +1204,295 @@ mutation {
 }
 ```
 
-### Example 7 — Log trainer hours and query summary
+### Example 7 — Create a training session and a free game session
 
-**Input (mutation):**
+**Input (training):**
+
+```graphql
+mutation {
+  createSession(
+    input: {
+      name: "Monday Evening Training"
+      sessionType: "TRAINING"
+      dayOfWeek: "MONDAY"
+      startTime: "18:00"
+      endTime: "19:30"
+      location: "Main Hall"
+      trainerId: "38792471048200"
+    }
+  ) {
+    id
+    name
+    sessionType {
+      name
+    }
+    dayOfWeek
+  }
+}
+```
+
+**Input (free game):**
+
+```graphql
+mutation {
+  createSession(
+    input: {
+      name: "Saturday Open Play"
+      sessionType: "FREE_GAME"
+      dayOfWeek: "SATURDAY"
+      startTime: "10:00"
+      endTime: "12:00"
+      location: "Court A"
+    }
+  ) {
+    id
+    name
+    sessionType {
+      name
+    }
+    dayOfWeek
+  }
+}
+```
+
+Note: The free game session has no `trainerId`. Attempting to set one would return a validation error.
+
+### Example 8 — Bulk-create session occurrences for a season
+
+The admin schedules all Monday training occurrences for the spring semester:
+
+**Input:**
+
+```graphql
+mutation {
+  createSessionOccurrences(
+    input: {
+      sessionId: "38792471048300"
+      startDate: "2026-09-01"
+      endDate: "2026-12-31"
+      skipDates: ["2026-12-28"]
+    }
+  ) {
+    id
+    date
+    status {
+      name
+    }
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "createSessionOccurrences": [
+      {
+        "id": "38792587164000",
+        "date": "2026-09-07",
+        "status": { "name": "SCHEDULED" }
+      },
+      {
+        "id": "38792587164001",
+        "date": "2026-09-14",
+        "status": { "name": "SCHEDULED" }
+      },
+      {
+        "id": "38792587164002",
+        "date": "2026-09-21",
+        "status": { "name": "SCHEDULED" }
+      }
+    ]
+  }
+}
+```
+
+_(Truncated — all Mondays in the range except 2026-12-28 are created.)_
+
+### Example 9 — Log trainer hours against a completed occurrence (admin direct)
+
+First, mark the occurrence as completed, then the admin logs hours directly (bypasses approval — status is set to `APPROVED`):
+
+**Input (complete):**
+
+```graphql
+mutation {
+  completeSessionOccurrence(id: "38792587164000") {
+    id
+    date
+    status {
+      name
+    }
+  }
+}
+```
+
+**Input (admin logs hours directly):**
 
 ```graphql
 mutation {
   logTrainerHours(
     input: {
       trainerId: "38792471048200"
-      trainingSessionId: "38792471048300"
-      date: "2026-04-07"
+      sessionOccurrenceId: "38792587164000"
       hoursWorked: 1.5
     }
   ) {
     id
     hoursWorked
+    status {
+      name
+    }
   }
 }
 ```
 
-**Input (query):**
+**Expected output:**
+
+```json
+{
+  "data": {
+    "logTrainerHours": {
+      "id": "38792587164100",
+      "hoursWorked": 1.5,
+      "status": { "name": "APPROVED" }
+    }
+  }
+}
+```
+
+**Input (query summary — only approved hours are included):**
 
 ```graphql
 query {
   trainerHours(
     trainerId: "38792471048200"
-    from: "2026-04-01"
-    to: "2026-04-30"
+    from: "2026-09-01"
+    to: "2026-09-30"
   ) {
     trainer {
       firstName
       lastName
     }
     totalHours
+    totalOwed
     sessionCount
   }
 }
 ```
 
-### Example 8 — Validation error: duplicate email
+### Example 10 — Member views their available sessions
+
+Anna has "Free Games" and "Training" subscriptions. She queries her upcoming sessions:
+
+**Input:**
+
+```graphql
+query {
+  mySessions(from: "2026-09-01", to: "2026-09-14") {
+    id
+    date
+    status {
+      name
+    }
+    session {
+      name
+      sessionType {
+        name
+      }
+      startTime
+      endTime
+      location
+      trainer {
+        firstName
+        lastName
+      }
+    }
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "mySessions": [
+      {
+        "id": "38792587164000",
+        "date": "2026-09-07",
+        "status": { "name": "SCHEDULED" },
+        "session": {
+          "name": "Monday Evening Training",
+          "sessionType": { "name": "TRAINING" },
+          "startTime": "18:00",
+          "endTime": "19:30",
+          "location": "Main Hall",
+          "trainer": { "firstName": "Marco", "lastName": "Fischer" }
+        }
+      },
+      {
+        "id": "38792587164010",
+        "date": "2026-09-12",
+        "status": { "name": "SCHEDULED" },
+        "session": {
+          "name": "Saturday Open Play",
+          "sessionType": { "name": "FREE_GAME" },
+          "startTime": "10:00",
+          "endTime": "12:00",
+          "location": "Court A",
+          "trainer": null
+        }
+      }
+    ]
+  }
+}
+```
+
+Attendance is voluntary — the system simply shows what is available. The frontend uses `myNextSession` to remind Anna of her nearest upcoming session.
+
+### Example 11 — Next session reminder
+
+**Input:**
+
+```graphql
+query {
+  myNextSession {
+    id
+    date
+    session {
+      name
+      sessionType {
+        name
+      }
+      startTime
+      location
+    }
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "myNextSession": {
+      "id": "38792587164000",
+      "date": "2026-09-07",
+      "session": {
+        "name": "Monday Evening Training",
+        "sessionType": { "name": "TRAINING" },
+        "startTime": "18:00",
+        "location": "Main Hall"
+      }
+    }
+  }
+}
+```
+
+### Example 12 — Validation error: duplicate email
 
 **Input:**
 
@@ -923,7 +1513,7 @@ mutation {
 
 **Expected output:** GraphQL error with classification `VALIDATION` and message indicating duplicate email.
 
-### Example 9 — GDPR erasure: delete a member
+### Example 13 — GDPR erasure: delete a member
 
 **Input:**
 
@@ -970,6 +1560,710 @@ mutation {
 
 Payment records linked through subscriptions remain intact for tax compliance (BAO §132).
 
+### Example 14 — Admin workflow: create a Free Game membership type (end-to-end)
+
+This scenario demonstrates the full admin workflow for setting up a "Free Games" membership type from scratch through publication.
+
+**Step 1: Create the membership type (DRAFT)**
+
+```graphql
+mutation {
+  createMembershipType(
+    input: {
+      name: "Freies Spiel Montag"
+      description: "Free game sessions every Monday evening, 18:00–20:30"
+      price: 200.00
+      duration: 1
+      unit: "YEARS"
+      proratedMode: true
+    }
+  ) {
+    id
+    name
+    status {
+      name
+    }
+    proratedMode
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "createMembershipType": {
+      "id": "71820948571648",
+      "name": "Freies Spiel Montag",
+      "status": { "name": "DRAFT" },
+      "proratedMode": true
+    }
+  }
+}
+```
+
+**Step 2: Create a FREE_GAME session**
+
+```graphql
+mutation {
+  createSession(
+    input: {
+      name: "Monday Evening Free Game"
+      sessionType: "FREE_GAME"
+      dayOfWeek: "MONDAY"
+      startTime: "18:00"
+      endTime: "20:30"
+      location: "Court, Primary School, Street x 88"
+    }
+  ) {
+    id
+    name
+    sessionType {
+      name
+    }
+    dayOfWeek
+    startTime
+    endTime
+    location
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "createSession": {
+      "id": "71820948571700",
+      "name": "Monday Evening Free Game",
+      "sessionType": { "name": "FREE_GAME" },
+      "dayOfWeek": "MONDAY",
+      "startTime": "18:00",
+      "endTime": "20:30",
+      "location": "Court, Primary School, Street x 88"
+    }
+  }
+}
+```
+
+**Step 3: Assign the session to the membership type**
+
+```graphql
+mutation {
+  assignSessionToMembershipType(
+    membershipTypeId: "71820948571648"
+    sessionId: "71820948571700"
+  ) {
+    membershipType {
+      name
+    }
+    session {
+      name
+    }
+  }
+}
+```
+
+**Step 4: Bulk-create occurrences for the season (skipping holidays)**
+
+```graphql
+mutation {
+  createSessionOccurrences(
+    input: {
+      sessionId: "71820948571700"
+      startDate: "2026-09-01"
+      endDate: "2027-06-30"
+      skipDates: ["2026-12-25", "2027-01-01", "2027-01-06", "2027-04-05"]
+    }
+  ) {
+    created
+    sessionOccurrences {
+      date
+      status {
+        name
+      }
+    }
+  }
+}
+```
+
+The backend generates one `SCHEDULED` occurrence for every Monday between 2026-09-01 and 2027-06-30, excluding the specified holiday dates.
+
+**Step 5: Publish the membership type (DRAFT → ACTIVE)**
+
+```graphql
+mutation {
+  changeMembershipTypeStatus(id: "71820948571648", status: "ACTIVE") {
+    id
+    name
+    status {
+      name
+    }
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "changeMembershipTypeStatus": {
+      "id": "71820948571648",
+      "name": "Freies Spiel Montag",
+      "status": { "name": "ACTIVE" }
+    }
+  }
+}
+```
+
+> **Note (Phase 2):** Upon activation, the system will eventually send SMS and email notifications to all active members informing them that a new membership option is available. Phase 1 does not implement the notification — the `changeMembershipTypeStatus` mutation is the future integration point.
+
+**Step 6: Member subscribes mid-season (prorated mode applies)**
+
+When the membership type has `proratedMode: true` and a member subscribes on 2027-01-15 (167 days remaining out of a 365-day period), the system auto-calculates the prorated price if no explicit `agreedPrice` is provided:
+
+```graphql
+mutation {
+  subscribeMember(
+    input: {
+      memberId: "38792587163648"
+      membershipTypeId: "71820948571648"
+      startDate: "2027-01-15"
+      endDate: "2027-06-30"
+    }
+  ) {
+    id
+    startDate
+    endDate
+    agreedPrice
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "subscribeMember": {
+      "id": "71820948571900",
+      "startDate": "2027-01-15",
+      "endDate": "2027-06-30",
+      "agreedPrice": 91.51
+    }
+  }
+}
+```
+
+Calculation: `200.00 × (167 / 365) = 91.51` (rounded to 2 decimal places). The member pays only for the remaining portion of the season.
+
+### Example 15 — Admin workflow: create a Training membership type with trainer selection
+
+This scenario demonstrates the admin workflow for setting up a "Training" membership type, including querying for available trainers and assigning one to the session.
+
+**Step 1: Create the membership type (DRAFT)**
+
+```graphql
+mutation {
+  createMembershipType(
+    input: {
+      name: "Mittwochstraining Anfänger"
+      description: "Beginner training sessions every Wednesday, 18:00–20:00"
+      price: 360.00
+      duration: 1
+      unit: "YEARS"
+      proratedMode: true
+    }
+  ) {
+    id
+    name
+    status {
+      name
+    }
+    proratedMode
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "createMembershipType": {
+      "id": "71820948572000",
+      "name": "Mittwochstraining Anfänger",
+      "status": { "name": "DRAFT" },
+      "proratedMode": true
+    }
+  }
+}
+```
+
+**Step 2: Query available trainers for the desired time slot**
+
+Before creating the training session, the admin checks which trainers are free on Wednesday 18:00–20:00:
+
+```graphql
+query {
+  availableTrainers(
+    dayOfWeek: "WEDNESDAY"
+    startTime: "18:00"
+    endTime: "20:00"
+  ) {
+    id
+    firstName
+    lastName
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "availableTrainers": [
+      { "id": "55120948571000", "firstName": "Karl", "lastName": "Weber" },
+      { "id": "55120948571001", "firstName": "Eva", "lastName": "Gruber" }
+    ]
+  }
+}
+```
+
+The query returns only trainers who do **not** have an existing session overlapping Wednesday 18:00–20:00. The admin selects Karl Weber for this training.
+
+**Step 3: Create a TRAINING session with the selected trainer**
+
+```graphql
+mutation {
+  createSession(
+    input: {
+      name: "Wednesday Beginner Training"
+      sessionType: "TRAINING"
+      dayOfWeek: "WEDNESDAY"
+      startTime: "18:00"
+      endTime: "20:00"
+      location: "Court, Primary School, Street y 99"
+      trainerId: "55120948571000"
+    }
+  ) {
+    id
+    name
+    sessionType {
+      name
+    }
+    dayOfWeek
+    startTime
+    endTime
+    location
+    trainer {
+      firstName
+      lastName
+    }
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "createSession": {
+      "id": "71820948572100",
+      "name": "Wednesday Beginner Training",
+      "sessionType": { "name": "TRAINING" },
+      "dayOfWeek": "WEDNESDAY",
+      "startTime": "18:00",
+      "endTime": "20:00",
+      "location": "Court, Primary School, Street y 99",
+      "trainer": { "firstName": "Karl", "lastName": "Weber" }
+    }
+  }
+}
+```
+
+The system validates that Karl Weber has no overlapping session on Wednesdays 18:00–20:00 before persisting.
+
+**Step 4: Assign the session to the membership type**
+
+```graphql
+mutation {
+  assignSessionToMembershipType(
+    membershipTypeId: "71820948572000"
+    sessionId: "71820948572100"
+  ) {
+    membershipType {
+      name
+    }
+    session {
+      name
+      trainer {
+        firstName
+        lastName
+      }
+    }
+  }
+}
+```
+
+**Step 5: Bulk-create occurrences for the season (skipping holidays)**
+
+```graphql
+mutation {
+  createSessionOccurrences(
+    input: {
+      sessionId: "71820948572100"
+      startDate: "2026-09-01"
+      endDate: "2027-06-30"
+      skipDates: ["2026-12-25", "2027-01-01", "2027-01-06", "2027-04-05"]
+    }
+  ) {
+    created
+    sessionOccurrences {
+      date
+      status {
+        name
+      }
+    }
+  }
+}
+```
+
+The backend generates one `SCHEDULED` occurrence for every Wednesday between 2026-09-01 and 2027-06-30, excluding the specified holiday dates.
+
+**Step 6: Publish the membership type (DRAFT → ACTIVE)**
+
+```graphql
+mutation {
+  changeMembershipTypeStatus(id: "71820948572000", status: "ACTIVE") {
+    id
+    name
+    status {
+      name
+    }
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "changeMembershipTypeStatus": {
+      "id": "71820948572000",
+      "name": "Mittwochstraining Anfänger",
+      "status": { "name": "ACTIVE" }
+    }
+  }
+}
+```
+
+> **Note (Phase 2):** Upon activation, a notification (SMS + email) will be sent to all active members. Phase 1 does not implement the notification itself.
+
+**Step 7: Member subscribes mid-season (prorated mode applies)**
+
+A member subscribes on 2027-03-01 (122 days remaining out of 365):
+
+```graphql
+mutation {
+  subscribeMember(
+    input: {
+      memberId: "38792587163648"
+      membershipTypeId: "71820948572000"
+      startDate: "2027-03-01"
+      endDate: "2027-06-30"
+    }
+  ) {
+    id
+    startDate
+    endDate
+    agreedPrice
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "subscribeMember": {
+      "id": "71820948572200",
+      "startDate": "2027-03-01",
+      "endDate": "2027-06-30",
+      "agreedPrice": 120.22
+    }
+  }
+}
+```
+
+Calculation: `360.00 × (122 / 365) = 120.22` (rounded to 2 decimal places).
+
+### Example 16 — Trainer submits hours (manual approval workflow)
+
+Karl Weber (trainer) conducts Wednesday's beginner training on 2026-09-03. The admin marks the occurrence as completed, then Karl submits his hours. Karl's `autoApproveHours` is `false`, so hours go to `PENDING`.
+
+**Step 1: Admin marks the occurrence as completed**
+
+```graphql
+mutation {
+  completeSessionOccurrence(id: "71820948573000") {
+    id
+    date
+    status {
+      name
+    }
+  }
+}
+```
+
+**Step 2: Trainer submits hours**
+
+```graphql
+mutation {
+  submitTrainerHours(
+    input: {
+      sessionOccurrenceId: "71820948573000"
+      hoursWorked: 2.0
+      notes: "Full session, 8 participants"
+    }
+  ) {
+    id
+    hoursWorked
+    status {
+      name
+    }
+    submittedAt
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "submitTrainerHours": {
+      "id": "71820948573100",
+      "hoursWorked": 2.0,
+      "status": { "name": "PENDING" },
+      "submittedAt": "2026-09-03T20:15:00"
+    }
+  }
+}
+```
+
+**Step 3: Admin reviews pending logs**
+
+```graphql
+query {
+  pendingTrainerLogs(trainerId: "55120948571000") {
+    id
+    hoursWorked
+    notes
+    submittedAt
+    sessionOccurrence {
+      date
+      session {
+        name
+      }
+    }
+  }
+}
+```
+
+**Step 4: Admin approves**
+
+```graphql
+mutation {
+  approveTrainerLog(id: "71820948573100") {
+    id
+    status {
+      name
+    }
+    reviewedAt
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "approveTrainerLog": {
+      "id": "71820948573100",
+      "status": { "name": "APPROVED" },
+      "reviewedAt": "2026-09-04T09:30:00"
+    }
+  }
+}
+```
+
+### Example 17 — Trainer submits hours (auto-approval)
+
+Eva Gruber (trainer) has `autoApproveHours: true`. She submits hours after her Thursday training session:
+
+```graphql
+mutation {
+  submitTrainerHours(
+    input: { sessionOccurrenceId: "71820948573200", hoursWorked: 1.5 }
+  ) {
+    id
+    hoursWorked
+    status {
+      name
+    }
+    submittedAt
+    reviewedAt
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "submitTrainerHours": {
+      "id": "71820948573300",
+      "hoursWorked": 1.5,
+      "status": { "name": "APPROVED" },
+      "submittedAt": "2026-09-04T20:10:00",
+      "reviewedAt": "2026-09-04T20:10:00"
+    }
+  }
+}
+```
+
+No admin action needed — hours are immediately approved and the trainer is entitled to payment.
+
+### Example 18 — Admin rejects hours, trainer resubmits
+
+The admin notices Karl submitted 3.0 hours for a 2-hour session and rejects:
+
+**Step 1: Admin rejects**
+
+```graphql
+mutation {
+  rejectTrainerLog(
+    input: {
+      id: "71820948573400"
+      reason: "Session is 2 hours (18:00–20:00), submitted 3.0 hours. Please correct."
+    }
+  ) {
+    id
+    status {
+      name
+    }
+    rejectionReason
+    reviewedAt
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "rejectTrainerLog": {
+      "id": "71820948573400",
+      "status": { "name": "REJECTED" },
+      "rejectionReason": "Session is 2 hours (18:00–20:00), submitted 3.0 hours. Please correct.",
+      "reviewedAt": "2026-09-05T10:00:00"
+    }
+  }
+}
+```
+
+**Step 2: Trainer sees the rejection and resubmits**
+
+```graphql
+mutation {
+  resubmitTrainerLog(
+    input: {
+      id: "71820948573400"
+      hoursWorked: 2.0
+      notes: "Corrected — 2h session"
+    }
+  ) {
+    id
+    hoursWorked
+    status {
+      name
+    }
+    rejectionReason
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "resubmitTrainerLog": {
+      "id": "71820948573400",
+      "hoursWorked": 2.0,
+      "status": { "name": "PENDING" },
+      "rejectionReason": null
+    }
+  }
+}
+```
+
+The entry is now back to `PENDING` for the admin to review again.
+
+### Example 19 — Trainer views their payment summary
+
+Karl checks his September payment summary:
+
+```graphql
+query {
+  myTrainerPaymentSummary(from: "2026-09-01", to: "2026-09-30") {
+    trainer {
+      firstName
+      lastName
+    }
+    approvedHours
+    approvedSessions
+    hourlyRate
+    totalOwed
+    paymentMode
+    pendingHours
+    pendingSessions
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "myTrainerPaymentSummary": {
+      "trainer": { "firstName": "Karl", "lastName": "Weber" },
+      "approvedHours": 8.0,
+      "approvedSessions": 4,
+      "hourlyRate": 35.0,
+      "totalOwed": 280.0,
+      "paymentMode": "MONTHLY",
+      "pendingHours": 2.0,
+      "pendingSessions": 1
+    }
+  }
+}
+```
+
+Karl has 4 approved sessions (8 hours × €35/hr = €280 owed) and 1 session still pending approval.
+
 ---
 
 ## Complexity Targets
@@ -983,7 +2277,7 @@ Not applicable in the traditional algorithmic sense. Performance targets for Pha
 | Mutations             | < 100 ms                        |
 | Outstanding payments  | < 500 ms (involves aggregation) |
 
-Database indices should cover: `member.email`, `member_status_history.member_id`, `member_status_history.changed_at`, `member_subscription.member_id`, `member_subscription.membership_type_id`, `member_subscription.end_date`, `payment.member_subscription_id`, `trainer_log.trainer_id`, `trainer_log.date`, `membership_type_training_session` (composite PK).
+Database indices should cover: `member.email`, `member_status_history.member_id`, `member_status_history.changed_at`, `member_subscription.member_id`, `member_subscription.membership_type_id`, `member_subscription.end_date`, `payment.member_subscription_id`, `session.day_of_week`, `session.trainer_id`, `session.session_type_id`, `session_occurrence.session_id`, `session_occurrence.date`, `session_occurrence(session_id, date)` (unique), `trainer_log.trainer_id`, `trainer_log.session_occurrence_id`, `trainer_log.status_id`, `trainer_log(trainer_id, session_occurrence_id)` (unique), `membership_type_session` (composite PK).
 
 ---
 
@@ -1055,9 +2349,9 @@ at.mavila.dbchatbox.domain.club.member        — Member entity, service, valida
 at.mavila.dbchatbox.domain.club.status         — Status entity, MemberStatusHistory entity, service
 at.mavila.dbchatbox.domain.club.unit           — Unit entity (reference table for time units)
 at.mavila.dbchatbox.domain.club.subscription   — MemberSubscription entity, service
-at.mavila.dbchatbox.domain.club.membership     — MembershipType entity, MembershipTypeStatus, MembershipTypeTrainingSession, service
+at.mavila.dbchatbox.domain.club.membership     — MembershipType entity, MembershipTypeStatus, MembershipTypeSession, service
 at.mavila.dbchatbox.domain.club.payment        — Payment entity, service, outstanding-dues logic
-at.mavila.dbchatbox.domain.club.training       — TrainingSession entity, service
+at.mavila.dbchatbox.domain.club.session        — Session entity, SessionType, SessionOccurrence, SessionOccurrenceStatus, service
 at.mavila.dbchatbox.domain.club.trainer        — Trainer entity, TrainerLog, hours aggregation
 ```
 
@@ -1107,7 +2401,11 @@ Flyway migrations under `src/main/resources/db/migration/` for all tables includ
 - `member_subscription` (links member to membership type)
 - `unit` (with seed data: DAYS, WEEKS, MONTHS, YEARS)
 - `membership_type_status` (with seed data: DRAFT, ACTIVE, INACTIVE)
-- `membership_type_training_session` (join table)
+- `session_type` (with seed data: TRAINING, FREE_GAME)
+- `session` (recurring weekly schedule — references session_type, optionally trainer)
+- `session_occurrence_status` (with seed data: SCHEDULED, CANCELLED, COMPLETED)
+- `session_occurrence` (concrete dated instances of sessions)
+- `membership_type_session` (join table — replaces former membership_type_training_session)
 
 ### Data Access Layer — JPA Repositories
 
@@ -1155,7 +2453,7 @@ The service layer must follow **domain-driven decomposition**. Each bounded cont
 
 **Conventions:**
 
-- **One service per domain aggregate**: `MemberService`, `SubscriptionService`, `PaymentService`, `MembershipTypeService`, `TrainingSessionService`, `TrainerService`.
+- **One service per domain aggregate**: `MemberService`, `SubscriptionService`, `PaymentService`, `MembershipTypeService`, `SessionService`, `TrainerService`.
 - Each service is a `@Component` (or `@Service`) annotated with `@RequiredArgsConstructor` and lives in its respective domain subpackage.
 - A service orchestrates operations within its own aggregate boundary. For cross-aggregate operations (e.g. `deleteMember` which touches members, subscriptions, and status history), a **domain orchestrator** or **application service** coordinates the calls — but each step is delegated to the responsible domain service.
 - Services must **not** grow beyond their aggregate scope — a `MemberService` should not contain subscription logic or payment logic.
@@ -1197,8 +2495,8 @@ at.mavila.dbchatbox.domain.club.status         → MemberStatusService
 at.mavila.dbchatbox.domain.club.subscription   → SubscriptionService
 at.mavila.dbchatbox.domain.club.membership     → MembershipTypeService
 at.mavila.dbchatbox.domain.club.payment        → PaymentService
-at.mavila.dbchatbox.domain.club.training       → TrainingSessionService
-at.mavila.dbchatbox.domain.club.trainer        → TrainerService
+at.mavila.dbchatbox.domain.club.session        → SessionService
+at.mavila.dbchatbox.domain.club.trainer        → TrainerService, TrainerLogService
 ```
 
 ### GDPR Compliance
@@ -1213,13 +2511,15 @@ The system implements Art. 17 DSGVO (right to erasure) via **in-place anonymizat
 
 ### Future Phases (out of scope)
 
-- **Phase 2**: Automated invoices, payment reminders, member/trainer login portals, online hour logging, member self-registration & self-service.
+- **Phase 2**: Automated invoices, payment reminders, **member notifications** (SMS + email on membership type activation, session cancellation, etc.), member/trainer login portals, online hour logging, member self-registration & self-service, online payment.
 - **Phase 3**: Online training registration, automated payments, statistics dashboards, full online administration.
 - **Professional players**: Dedicated player/team entities, tournament participation, performance tracking, special contracts. Deferred until clarified whether professional players require separate treatment.
 
+> **Notification hook (Phase 2 preparation):** When a membership type transitions from `DRAFT → ACTIVE` (i.e. it is "published"), the system should eventually notify all active members via SMS and email that a new membership option is available. Phase 1 defines the activation lifecycle but does **not** implement the notification itself. The `changeMembershipTypeStatus` mutation is the integration point — Phase 2 will attach a notification service to this event.
+
 ### Enum Storage Pattern
 
-The reference tables `Status`, `Unit`, and `MembershipTypeStatus` act as **application-level enums**. In the Java domain layer, each is represented as a Java `enum` (e.g. `Status.ACTIVE`, `Unit.MONTHS`, `MembershipTypeStatus.DRAFT`). In the database, the `name` column is stored as `VARCHAR` and mapped via `@Enumerated(EnumType.STRING)`. This pattern ensures:
+The reference tables `Status`, `Unit`, `MembershipTypeStatus`, `SessionType`, `SessionOccurrenceStatus`, `TrainerLogStatus`, and `TrainerPaymentMode` act as **application-level enums**. In the Java domain layer, each is represented as a Java `enum` (e.g. `Status.ACTIVE`, `Unit.MONTHS`, `MembershipTypeStatus.DRAFT`, `SessionType.TRAINING`, `SessionOccurrenceStatus.SCHEDULED`, `TrainerLogStatus.PENDING`, `TrainerPaymentMode.PER_SESSION`). In the database, the `name` column is stored as `VARCHAR` and mapped via `@Enumerated(EnumType.STRING)`. This pattern ensures:
 
 - **Readability**: Database rows contain human-readable strings (`ACTIVE`, `MONTHS`) rather than opaque integer codes.
 - **Type safety**: The Java layer enforces that only declared enum constants can be used.
