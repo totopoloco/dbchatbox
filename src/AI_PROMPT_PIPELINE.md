@@ -303,6 +303,28 @@ Use this checklist for every spec implementation:
 
 All generated code **must** follow these conventions to remain consistent with the existing codebase.
 
+### One type per file
+
+- **Every top-level type — class, enum, record, interface, or annotation — must reside in its own `.java` file.** No type may be nested, embedded, or declared as an inner type inside another class.
+- File name must match the type name exactly (e.g., `MemberStatus.java` for `enum MemberStatus`).
+- This applies to all layers: domain entities, enums, records (DTOs / parameter objects), exceptions, configuration classes, controllers, and services.
+- The only exception is `private` helper types that are exclusively used by the enclosing class and have no meaning outside of it (e.g., a `private record` used only as an internal intermediate value). Even in this case, prefer extracting to a separate file if the type is non-trivial.
+
+```java
+// ✅ Good — each type in its own file
+// MemberStatus.java
+public enum MemberStatus { ACTIVE, INACTIVE, DELETED }
+
+// CreateMemberInput.java
+public record CreateMemberInput(String firstName, String lastName) {}
+
+// ❌ Bad — types embedded inside another class
+public class ClubEnums {
+    public enum MemberStatus { ACTIVE, INACTIVE, DELETED }
+    public enum DurationUnit { DAYS, WEEKS, MONTHS, YEARS }
+}
+```
+
 ### Null handling
 
 - **Never** use bare `== null` or `!= null` comparisons.
