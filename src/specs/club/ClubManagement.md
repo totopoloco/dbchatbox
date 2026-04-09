@@ -86,7 +86,7 @@ Represents a **person's membership in the club** — their identity, contact det
 
 ### Status (Reference Table)
 
-A lookup table of all possible member statuses.
+A lookup table of all possible member statuses. Values are modeled as a **Java enum** (`Status`) in the domain layer and stored as `String` (`VARCHAR`) in the database using `@Enumerated(EnumType.STRING)`.
 
 | Field  | Type     | Constraints                                    |
 | ------ | -------- | ---------------------------------------------- |
@@ -107,7 +107,7 @@ Additional statuses can be added in the future (e.g. `SUSPENDED`, `PENDING`) wit
 
 ### Unit (Reference Table)
 
-A lookup table of time units used for membership duration.
+A lookup table of time units used for membership duration. Values are modeled as a **Java enum** (`Unit`) in the domain layer and stored as `String` (`VARCHAR`) in the database using `@Enumerated(EnumType.STRING)`.
 
 | Field  | Type     | Constraints                                    |
 | ------ | -------- | ---------------------------------------------- |
@@ -127,7 +127,7 @@ Additional units can be added in the future without schema changes.
 
 ### MembershipTypeStatus (Reference Table)
 
-A lookup table of lifecycle statuses for membership types.
+A lookup table of lifecycle statuses for membership types. Values are modeled as a **Java enum** (`MembershipTypeStatus`) in the domain layer and stored as `String` (`VARCHAR`) in the database using `@Enumerated(EnumType.STRING)`.
 
 | Field  | Type     | Constraints                                    |
 | ------ | -------- | ---------------------------------------------- |
@@ -436,6 +436,65 @@ Member
 | `memberId`         | `ID`       | The TSID of the anonymized member        |
 | `anonymizedAt`     | `DateTime` | Timestamp when the erasure was performed |
 | `fieldsAnonymized` | `[String]` | List of field names that were anonymized |
+
+---
+
+## Authorization & Roles
+
+Phase 1 defines two roles. Authentication itself (login, tokens, identity provider) is out of scope for Phase 1 — the system assumes the caller's role is already resolved by the infrastructure layer.
+
+| Role       | Description                                                                                                                                      |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **ADMIN**  | Club administrator. Full access to all operations — manages members, membership types, subscriptions, payments, training sessions, and trainers. |
+| **MEMBER** | A registered club member. Can view their own data (profile, subscriptions, payments, training schedule).                                         |
+
+### Operation Access Matrix
+
+Each GraphQL operation is restricted to one or more roles. Operations not listed are accessible to both roles.
+
+#### Queries
+
+| Query                    | ADMIN | MEMBER | Notes                                                      |
+| ------------------------ | :---: | :----: | ---------------------------------------------------------- |
+| `members`                |   ✓   |        | Admin-only — list all members                              |
+| `memberById`             |   ✓   |   ✓    | Members can only query their own ID                        |
+| `memberStatusHistory`    |   ✓   |   ✓    | Members can only view their own history                    |
+| `memberSubscriptions`    |   ✓   |   ✓    | Members can only view their own subscriptions              |
+| `membershipTypes`        |   ✓   |   ✓    | Members see only `ACTIVE` types; admins see all statuses   |
+| `paymentsBySubscription` |   ✓   |   ✓    | Members can only view payments for their own subscriptions |
+| `paymentsByMember`       |   ✓   |   ✓    | Members can only query their own payments                  |
+| `outstandingPayments`    |   ✓   |        | Admin-only — aggregated view across all members            |
+| `trainingSessions`       |   ✓   |   ✓    | Read-only for both roles                                   |
+| `trainers`               |   ✓   |   ✓    | Read-only for both roles                                   |
+| `trainerHours`           |   ✓   |        | Admin-only — trainer hour tracking                         |
+
+#### Mutations
+
+| Mutation                       | ADMIN | MEMBER | Notes                                                                                    |
+| ------------------------------ | :---: | :----: | ---------------------------------------------------------------------------------------- |
+| `createMember`                 |   ✓   |        | Admin registers new members                                                              |
+| `updateMember`                 |   ✓   |   ✓    | Members can update their own contact details (email, phone); admin can update any member |
+| `changeMemberStatus`           |   ✓   |        | Admin-only — status transitions                                                          |
+| `deleteMember`                 |   ✓   |   ✓    | Members can request their own GDPR erasure; admin can erase any member                   |
+| `subscribeMember`              |   ✓   |        | Admin-only — controls who subscribes and at what price                                   |
+| `endSubscription`              |   ✓   |        | Admin-only — early termination                                                           |
+| `createMembershipType`         |   ✓   |        | Admin-only                                                                               |
+| `changeMembershipTypeStatus`   |   ✓   |        | Admin-only                                                                               |
+| `assignTrainingToMembership`   |   ✓   |        | Admin-only                                                                               |
+| `removeTrainingFromMembership` |   ✓   |        | Admin-only                                                                               |
+| `recordPayment`                |   ✓   |        | Admin-only — payment recording                                                           |
+| `createTrainingSession`        |   ✓   |        | Admin-only                                                                               |
+| `createTrainer`                |   ✓   |        | Admin-only                                                                               |
+| `logTrainerHours`              |   ✓   |        | Admin-only — trainer hour logging                                                        |
+
+### Authorization Rules
+
+1. **Admin-only pricing**: Only an admin can set or override `agreedPrice` when creating a subscription. This ensures that proration decisions are made by the club, not by the member.
+2. **Admin-only subscription management**: Only an admin can create, renew, or terminate subscriptions. Members cannot self-subscribe or self-terminate in Phase 1.
+3. **Member self-service scope**: A member can view their own profile, subscriptions, payment history, and the training schedule. They can update their own contact details (email, phone number) and request their own GDPR erasure.
+4. **Member data isolation**: When a member queries `memberById`, `memberSubscriptions`, `paymentsByMember`, or `paymentsBySubscription`, the system enforces that the requested data belongs to the authenticated member. Attempting to access another member's data returns an authorization error.
+5. **Membership type visibility**: Members see only `ACTIVE` membership types via `membershipTypes`. `DRAFT` and `INACTIVE` types are hidden from members — they are administrative concerns.
+6. **Future self-service (out of scope)**: Phase 2 may introduce member self-registration, online payment, and subscription renewal requests. Phase 1 assumes all write operations go through an administrator.
 
 ---
 
@@ -976,6 +1035,14 @@ The system implements Art. 17 DSGVO (right to erasure) via **in-place anonymizat
 
 ### Future Phases (out of scope)
 
-- **Phase 2**: Automated invoices, payment reminders, member/trainer login portals, online hour logging.
+- **Phase 2**: Automated invoices, payment reminders, member/trainer login portals, online hour logging, member self-registration & self-service.
 - **Phase 3**: Online training registration, automated payments, statistics dashboards, full online administration.
 - **Professional players**: Dedicated player/team entities, tournament participation, performance tracking, special contracts. Deferred until clarified whether professional players require separate treatment.
+
+### Enum Storage Pattern
+
+The reference tables `Status`, `Unit`, and `MembershipTypeStatus` act as **application-level enums**. In the Java domain layer, each is represented as a Java `enum` (e.g. `Status.ACTIVE`, `Unit.MONTHS`, `MembershipTypeStatus.DRAFT`). In the database, the `name` column is stored as `VARCHAR` and mapped via `@Enumerated(EnumType.STRING)`. This pattern ensures:
+
+- **Readability**: Database rows contain human-readable strings (`ACTIVE`, `MONTHS`) rather than opaque integer codes.
+- **Type safety**: The Java layer enforces that only declared enum constants can be used.
+- **Extensibility**: New values can be added by extending the enum and inserting a matching seed row — no schema change required.

@@ -150,7 +150,7 @@ When a rule cannot be expressed with standard annotations (e.g., "leading coeffi
 
 #### What stays out of the service
 
-- **No `if (Objects.isNull(...))` guards for input validation** — these are replaced by `@NotNull`.
+- **No `if (isNull(...))` guards for input validation** — these are replaced by `@NotNull`.
 - **No manual range/size checks** — use `@Positive`, `@Min`, `@Max`, `@Size`.
 - The service's public method body begins directly with business logic, not validation boilerplate.
 
@@ -306,14 +306,20 @@ All generated code **must** follow these conventions to remain consistent with t
 ### Null handling
 
 - **Never** use bare `== null` or `!= null` comparisons.
-- Use `Objects.isNull(...)` for null checks and `Objects.nonNull(...)` for non-null checks.
-- Import from `java.util.Objects` — either qualified (`Objects.isNull(x)`) or static (`import static java.util.Objects.isNull;`).
-- For ternary defaulting, prefer `Objects.isNull(value) ? default : value`.
+- Use `isNull(...)` and `nonNull(...)` from `java.util.Objects` via **static imports**.
+- **Prefer static imports**: `import static java.util.Objects.isNull;` and `import static java.util.Objects.nonNull;`. Use the unqualified `isNull(x)` / `nonNull(x)` form in code.
+- For ternary defaulting, prefer `isNull(value) ? default : value`.
 
 ```java
-// ✅ Good
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
+// ✅ Good — static import, unqualified call
+if (isNull(input)) { ... }
+if (nonNull(listener)) { ... }
+
+// ✅ Acceptable — qualified call (e.g. when static import would conflict)
 if (Objects.isNull(input)) { ... }
-if (Objects.nonNull(listener)) { ... }
 
 // ❌ Bad
 if (input == null) { ... }
@@ -336,7 +342,7 @@ List<Integer> result = items.stream()
 
 // ✅ Good — enhanced for-each when state is carried
 for (BigDecimal coefficient : coefficients) {
-    if (Objects.isNull(coefficient)) { throw ...; }
+    if (isNull(coefficient)) { throw ...; }
 }
 
 // ❌ Bad — indexed loop for simple iteration
@@ -422,7 +428,7 @@ if (!violations.isEmpty()) {
 ```java
 // ✅ Good — decomposed validation reduces complexity
 private void validateCoefficients(final List<BigDecimal> coefficients) {
-    if (Objects.isNull(coefficients) || coefficients.isEmpty()) { throw ...; }
+    if (isNull(coefficients) || coefficients.isEmpty()) { throw ...; }
     if (coefficients.size() < MIN_SIZE) { throw ...; }
     // ...
 }
@@ -441,10 +447,10 @@ private void validateInputs(List<BigDecimal> coefficients, BigDecimal initialGue
 
 ### Input validation
 
-- **Domain services must not contain manual input-validation logic** (`if (Objects.isNull(...)) throw ...`).
+- **Domain services must not contain manual input-validation logic** (`if (isNull(...)) throw ...`).
 - Use **Jakarta Bean Validation** annotations (`@NotNull`, `@NotEmpty`, `@Positive`, `@Size`, etc.) on parameter records or DTOs.
 - For domain-specific constraints that cannot be expressed with standard annotations, create **custom constraint annotations** with dedicated `ConstraintValidator` implementations.
-- Keep `Objects.isNull()` / `Objects.nonNull()` for **runtime branching logic** (e.g., optional parameter defaulting in the application layer), not for input validation in domain services.
+- Keep `isNull()` / `nonNull()` (via static import) for **runtime branching logic** (e.g., optional parameter defaulting in the application layer), not for input validation in domain services.
 - **Annotation formatting**: Each constraint annotation must be on its **own line**, directly above the parameter it annotates. Never stack multiple annotations on the same line or inline them with the parameter declaration.
 
 ```java
