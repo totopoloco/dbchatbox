@@ -1,0 +1,292 @@
+package at.mavila.dbchatbox.domain.club.trainer;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import at.mavila.dbchatbox.domain.club.exception.InvalidOperationException;
+import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
+import at.mavila.dbchatbox.domain.club.training.SessionOccurrence;
+import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceRepository;
+import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceStatus;
+import at.mavila.dbchatbox.domain.club.training.SessionType;
+import lombok.RequiredArgsConstructor;
+
+/**
+ * Domain service for trainer hour logging — submit, approve, reject, resubmit, and summaries.
+ *
+ * @since 2026-04-09
+ */
+@Component
+@RequiredArgsConstructor
+@Transactional
+public class TrainerLogService {
+
+  private static final BigDecimal MAX_HOURS = BigDecimal.valueOf(24);
+
+  private final TrainerLogRepository trainerLogRepository;
+  private final TrainerRepository trainerRepository;
+  private final SessionOccurrenceRepository occurrenceRepository;
+
+  /**
+   * Admin directly logs hours for a trainer (bypasses approval — status set to APPROVED).
+   *
+   * @param trainerId
+   *                              the trainer ID
+   * @param sessionOccurrenceId
+   *                              the session occurrence ID
+   * @param hoursWorked
+   *                              the hours worked (positive, max 24)
+   * @param notes
+   *                              optional notes
+   * @return the created log entry with status APPROVED
+   */
+  public TrainerLog logTrainerHours(final Long trainerId, final Long sessionOccurrenceId, final BigDecimal hoursWorked,
+      final String notes) {
+    final Trainer trainer = findTrainer(trainerId);
+    final SessionOccurrence occurrence = findOccurrence(sessionOccurrenceId);
+
+    validateOccurrenceForLogging(occurrence, trainer);
+    validateHoursWorked(hoursWorked);
+    validateNoDuplicate(trainerId, sessionOccurrenceId);
+
+    final LocalDateTime now = LocalDateTime.now();
+    final TrainerLog log = TrainerLog.builder().trainer(trainer).sessionOccurrence(occurrence).hoursWorked(hoursWorked)
+        .status(TrainerLogStatus.APPROVED).submittedAt(now).reviewedAt(now).notes(notes).build();
+
+    return trainerLogRepository.save(log);
+  }
+
+  /**
+   * Trainer submits hours (PENDING or auto-approved per trainer setting).
+   *
+   * @param trainerId
+   *                              the trainer ID
+   * @param sessionOccurrenceId
+   *                              the session occurrence ID
+   * @param hoursWorked
+   *                              the hours worked
+   * @param notes
+   *                              optional notes
+   * @return the created log entry
+   */
+  public TrainerLog submitTrainerHours(final Long trainerId, final Long sessionOccurrenceId,
+      final BigDecimal hoursWorked, final String notes) {
+    final Trainer trainer = findTrainer(trainerId);
+    final SessionOccurrence occurrence = findOccurrence(sessionOccurrenceId);
+
+    validateOccurrenceForLogging(occurrence, trainer);
+    validateHoursWorked(hoursWorked);
+    validateNoDuplicate(trainerId, sessionOccurrenceId);
+
+    final LocalDateTime now = LocalDateTime.now();
+    final boolean autoApprove = Boolean.TRUE.equals(trainer.getAutoApproveHours());
+
+    final TrainerLog log = TrainerLog.builder().trainer(trainer).sessionOccurrence(occurrence).hoursWorked(hoursWorked)
+        .status(autoApprove ? TrainerLogStatus.APPROVED : TrainerLogStatus.PENDING).submittedAt(now)
+        .reviewedAt(autoApprove ? now : null).notes(notes).build();
+
+    return trainerLogRepository.save(log);
+  }
+
+  /**
+   * Approves a pending trainer log entry.
+   *
+   * @param id
+   *             the log entry ID
+   * @return the approved entry
+   * @throws InvalidOperationException
+   *                                     if the entry is not PENDING
+   */
+  public TrainerLog approveLog(final Long id) {
+    final TrainerLog log = findLogOrThrow(id);
+    if (log.getStatus() != TrainerLogStatus.PENDING) {
+      throw new InvalidOperationException("Can only approve PENDING entries, current: %s".formatted(log.getStatus()));
+    }
+    log.setStatus(TrainerLogStatus.APPROVED);
+    log.setReviewedAt(LocalDateTime.now());
+    return trainerLogRepository.save(log);
+  }
+
+  /**
+   * Rejects a pending trainer log entry with a reason.
+   *
+   * @param id
+   *                 the log entry ID
+   * @param reason
+   *                 the rejection reason (required, not blank)
+   * @return the rejected entry
+   * @throws InvalidOperationException
+   *                                     if the entry is not PENDING or reason is blank
+   */
+  public TrainerLog rejectLog(final Long id, final String reason) {
+    final TrainerLog log = findLogOrThrow(id);
+    if (log.getStatus() != TrainerLogStatus.PENDING) {
+      throw new InvalidOperationException("Can only reject PENDING entries, current: %s".formatted(log.getStatus()));
+    }
+    if (isNull(reason) || reason.isBlank()) {
+      throw new InvalidOperationException("Rejection reason is required");
+    }
+    log.setStatus(TrainerLogStatus.REJECTED);
+    log.setReviewedAt(LocalDateTime.now());
+    log.setRejectionReason(reason);
+    return trainerLogRepository.save(log);
+  }
+
+  /**
+   * Resubmits corrected hours after rejection.
+   *
+   * @param id
+   *                      the log entry ID
+   * @param hoursWorked
+   *                      corrected hours
+   * @param notes
+   *                      updated notes
+   * @return the resubmitted entry (status reset to PENDING or auto-approved)
+   * @throws InvalidOperationException
+   *                                     if the entry is not REJECTED
+   */
+  public TrainerLog resubmitLog(final Long id, final BigDecimal hoursWorked, final String notes) {
+    final TrainerLog log = findLogOrThrow(id);
+    if (log.getStatus() != TrainerLogStatus.REJECTED) {
+      throw new InvalidOperationException("Can only resubmit REJECTED entries, current: %s".formatted(log.getStatus()));
+    }
+    validateHoursWorked(hoursWorked);
+
+    final boolean autoApprove = Boolean.TRUE.equals(log.getTrainer().getAutoApproveHours());
+    final LocalDateTime now = LocalDateTime.now();
+
+    log.setHoursWorked(hoursWorked);
+    log.setNotes(notes);
+    log.setRejectionReason(null);
+    log.setStatus(autoApprove ? TrainerLogStatus.APPROVED : TrainerLogStatus.PENDING);
+    log.setReviewedAt(autoApprove ? now : null);
+    log.setSubmittedAt(now);
+
+    return trainerLogRepository.save(log);
+  }
+
+  /**
+   * Finds pending log entries, optionally filtered by trainer.
+   *
+   * @param trainerId
+   *                    the trainer ID (null for all)
+   * @return pending log entries
+   */
+  @Transactional(readOnly = true)
+  public List<TrainerLog> findPendingLogs(final Long trainerId) {
+    if (nonNull(trainerId)) {
+      return trainerLogRepository.findByTrainerIdAndStatus(trainerId, TrainerLogStatus.PENDING);
+    }
+    return trainerLogRepository.findByStatus(TrainerLogStatus.PENDING);
+  }
+
+  /**
+   * Calculates approved hours summary for a trainer in a date range.
+   *
+   * @param trainerId
+   *                    the trainer ID
+   * @param from
+   *                    start date
+   * @param to
+   *                    end date
+   * @return summary with total hours, session count, and total owed
+   */
+  @Transactional(readOnly = true)
+  public TrainerHoursSummary getHoursSummary(final Long trainerId, final LocalDate from, final LocalDate to) {
+    final Trainer trainer = findTrainer(trainerId);
+    final BigDecimal totalHours = trainerLogRepository.sumApprovedHoursByTrainerAndDateRange(trainerId, from, to);
+    final long sessionCount = trainerLogRepository.countApprovedByTrainerAndDateRange(trainerId, from, to);
+    final BigDecimal totalOwed = totalHours.multiply(trainer.getHourlyRate());
+
+    return new TrainerHoursSummary(trainer, totalHours, (int) sessionCount, totalOwed, from, to);
+  }
+
+  /**
+   * Calculates full payment summary for a trainer in a date range.
+   *
+   * @param trainerId
+   *                    the trainer ID
+   * @param from
+   *                    start date
+   * @param to
+   *                    end date
+   * @return payment summary with approved and pending totals
+   */
+  @Transactional(readOnly = true)
+  public TrainerPaymentSummary getPaymentSummary(final Long trainerId, final LocalDate from, final LocalDate to) {
+    final Trainer trainer = findTrainer(trainerId);
+    final BigDecimal approvedHours = trainerLogRepository.sumApprovedHoursByTrainerAndDateRange(trainerId, from, to);
+    final long approvedSessions = trainerLogRepository.countApprovedByTrainerAndDateRange(trainerId, from, to);
+    final BigDecimal pendingHours = trainerLogRepository.sumPendingHoursByTrainerAndDateRange(trainerId, from, to);
+    final long pendingSessions = trainerLogRepository.countPendingByTrainerAndDateRange(trainerId, from, to);
+    final BigDecimal totalOwed = approvedHours.multiply(trainer.getHourlyRate());
+
+    return new TrainerPaymentSummary(trainer, from, to, approvedHours, (int) approvedSessions, trainer.getHourlyRate(),
+        totalOwed, trainer.getPaymentMode().name(), pendingHours, (int) pendingSessions);
+  }
+
+  private Trainer findTrainer(final Long trainerId) {
+    return trainerRepository.findById(trainerId).orElseThrow(() -> new ResourceNotFoundException("Trainer", trainerId));
+  }
+
+  private SessionOccurrence findOccurrence(final Long occurrenceId) {
+    return occurrenceRepository.findById(occurrenceId)
+        .orElseThrow(() -> new ResourceNotFoundException("SessionOccurrence", occurrenceId));
+  }
+
+  private TrainerLog findLogOrThrow(final Long id) {
+    return trainerLogRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("TrainerLog", id));
+  }
+
+  private void validateOccurrenceForLogging(final SessionOccurrence occurrence, final Trainer trainer) {
+    if (occurrence.getStatus() != SessionOccurrenceStatus.COMPLETED) {
+      throw new InvalidOperationException(
+          "Can only log hours for COMPLETED occurrences, current: %s".formatted(occurrence.getStatus()));
+    }
+    if (occurrence.getSession().getSessionType() != SessionType.TRAINING) {
+      throw new InvalidOperationException("Can only log hours for TRAINING sessions");
+    }
+    if (isNull(occurrence.getSession().getTrainer())
+        || !occurrence.getSession().getTrainer().getId().equals(trainer.getId())) {
+      throw new InvalidOperationException("Trainer is not assigned to this session");
+    }
+  }
+
+  private void validateHoursWorked(final BigDecimal hoursWorked) {
+    if (hoursWorked.compareTo(BigDecimal.ZERO) <= 0) {
+      throw new InvalidOperationException("Hours worked must be positive");
+    }
+    if (hoursWorked.compareTo(MAX_HOURS) > 0) {
+      throw new InvalidOperationException("Hours worked cannot exceed 24");
+    }
+  }
+
+  private void validateNoDuplicate(final Long trainerId, final Long sessionOccurrenceId) {
+    if (trainerLogRepository.existsByTrainerIdAndSessionOccurrenceId(trainerId, sessionOccurrenceId)) {
+      throw new InvalidOperationException("A log entry already exists for this trainer and session occurrence");
+    }
+  }
+
+  /**
+   * Summary of approved hours for a trainer.
+   */
+  public record TrainerHoursSummary(Trainer trainer, BigDecimal totalHours, int sessionCount, BigDecimal totalOwed,
+      LocalDate from, LocalDate to) {
+  }
+
+  /**
+   * Full payment summary for a trainer including pending and approved totals.
+   */
+  public record TrainerPaymentSummary(Trainer trainer, LocalDate from, LocalDate to, BigDecimal approvedHours,
+      int approvedSessions, BigDecimal hourlyRate, BigDecimal totalOwed, String paymentMode, BigDecimal pendingHours,
+      int pendingSessions) {
+  }
+}
