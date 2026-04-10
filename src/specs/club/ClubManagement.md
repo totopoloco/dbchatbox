@@ -217,7 +217,7 @@ Additional statuses can be added in the future without schema changes.
 
 **Transitions:**
 
-- `PENDING → APPROVED` — admin approves submitted hours (or system auto-approves if `autoApproveHours` is `true` on Trainer).
+- `PENDING → APPROVED` — admin approves submitted hours (or system auto-approves if `autoApproveHours` is `true` in the trainer's `TrainerSettings`).
 - `PENDING → REJECTED` — admin rejects submitted hours with a reason.
 - `REJECTED → PENDING` — trainer resubmits corrected hours (the existing log is updated, not duplicated).
 - `APPROVED` is terminal — once approved, hours cannot be unapproved or modified.
@@ -403,13 +403,32 @@ A **concrete, date-specific instance** of a `Session`. While `Session` defines t
 
 ### Trainer
 
+Represents the **identity and contact details** of a trainer — who they are. Compensation and workflow settings are stored separately in `TrainerSettings` (see below).
+
+| Field         | Type     | Constraints                             |
+| ------------- | -------- | --------------------------------------- |
+| `id`          | `Long`   | TSID, auto-generated, unique            |
+| `firstName`   | `String` | Not null, not blank, max 100 characters |
+| `lastName`    | `String` | Not null, not blank, max 100 characters |
+| `email`       | `String` | Not null, valid email format, unique    |
+| `phoneNumber` | `String` | Optional                                |
+
+**Note:** Compensation fields (`hourlyRate`, `paymentMode`, `autoApproveHours`) are **not** stored on the Trainer entity. See `TrainerSettings` below.
+
+**Business rules:**
+
+- A trainer's core identity (name, email, phone) is managed via `createTrainer` / `updateTrainer`.
+- A trainer always has exactly one associated `TrainerSettings` record, created automatically when the trainer is registered.
+- Email must be unique across all trainers.
+
+### TrainerSettings
+
+Stores **compensation and workflow configuration** for a trainer — how they are paid and whether their hours require manual approval. This is a dedicated entity (separate table) with a **one-to-one** relationship to `Trainer`, ensuring a clean separation between identity and admin-managed settings.
+
 | Field              | Type         | Constraints                                                                            |
 | ------------------ | ------------ | -------------------------------------------------------------------------------------- |
 | `id`               | `Long`       | TSID, auto-generated, unique                                                           |
-| `firstName`        | `String`     | Not null, not blank, max 100 characters                                                |
-| `lastName`         | `String`     | Not null, not blank, max 100 characters                                                |
-| `email`            | `String`     | Not null, valid email format, unique                                                   |
-| `phoneNumber`      | `String`     | Optional                                                                               |
+| `trainerId`        | `Long`       | Not null, references Trainer, unique (one-to-one)                                      |
 | `hourlyRate`       | `BigDecimal` | Not null, positive (> 0) — the trainer's rate per hour of work                         |
 | `paymentModeId`    | `Long`       | Not null, references TrainerPaymentMode — how the trainer is compensated               |
 | `autoApproveHours` | `Boolean`    | Not null, default `false` — if `true`, submitted hours are auto-approved by the system |
@@ -420,6 +439,10 @@ A **concrete, date-specific instance** of a `Session`. While `Session` defines t
 - `paymentMode` determines the settlement cadence: `PER_SESSION` means payment is due upon each approval; `MONTHLY` means approved hours are aggregated and settled at month end.
 - `autoApproveHours`: When `true`, any `logTrainerHours` or `submitTrainerHours` call for this trainer sets the log status directly to `APPROVED` instead of `PENDING`. This is useful for trusted, long-standing trainers where the admin does not want to manually approve each session.
 - When `autoApproveHours` is `false` (default), submitted hours start at `PENDING` and require explicit admin approval via the `approveTrainerLog` mutation.
+- Settings are managed exclusively by admins via `updateTrainerSettings`. Trainers cannot modify their own settings.
+- When a trainer is created via `createTrainer`, the initial settings (hourly rate, payment mode, auto-approve) are provided in the input and the system creates both the `Trainer` and its `TrainerSettings` in a single transaction.
+
+> **Design note — entity attribute placement review:** All domain entities were reviewed for attributes that belong in a dedicated settings/configuration table vs. the core entity. The `Trainer` entity was the only case where admin-managed configuration (`hourlyRate`, `paymentMode`, `autoApproveHours`) was mixed with core identity fields (`firstName`, `lastName`, `email`, `phoneNumber`). These are now separated into `TrainerSettings`. Other entities (Member, MembershipType, Session, SessionOccurrence, Payment, MemberSubscription, TrainerLog) have all attributes integral to their identity or purpose — no further extraction is warranted. For `MembershipType`, the `proratedMode` flag was considered but kept in place because it defines a core behavioral characteristic of the type (how pricing works), not an independently manageable setting.
 
 ### TrainerLog (Training Hours)
 
@@ -442,8 +465,8 @@ A **concrete, date-specific instance** of a `Session`. While `Session` defines t
 - The referenced `SessionOccurrence` must belong to a `Session` of type `TRAINING` with the same `trainerId` as this log entry.
 - The `date` is derived from the `SessionOccurrence` — no separate date field needed on the log.
 - Total hours per trainer can be aggregated by date range (using the occurrence's `date`).
-- **Approval workflow**: New entries are created with status `PENDING` (or `APPROVED` if the trainer's `autoApproveHours` is `true`). The admin reviews pending entries and either approves or rejects them. Rejected entries can be resubmitted by the trainer (the log entry is updated in place — `hoursWorked` and `notes` are modified, status returns to `PENDING`, `rejectionReason` is cleared).
-- **Trainer payment calculation**: For `APPROVED` entries, the owed amount = `trainer.hourlyRate × hoursWorked`. The `trainerHours` query includes only `APPROVED` log entries in its aggregation. A separate `pendingTrainerLogs` query shows entries awaiting review.
+- **Approval workflow**: New entries are created with status `PENDING` (or `APPROVED` if the trainer's `TrainerSettings.autoApproveHours` is `true`). The admin reviews pending entries and either approves or rejects them. Rejected entries can be resubmitted by the trainer (the log entry is updated in place — `hoursWorked` and `notes` are modified, status returns to `PENDING`, `rejectionReason` is cleared).
+- **Trainer payment calculation**: For `APPROVED` entries, the owed amount = `trainerSettings.hourlyRate × hoursWorked`. The `trainerHours` query includes only `APPROVED` log entries in its aggregation. A separate `pendingTrainerLogs` query shows entries awaiting review.
 
 ---
 
@@ -463,7 +486,9 @@ Member
        │                                               │        │
        └── Payment                                     │   TrainerLog ── TrainerLogStatus
                                                        │
-                                                    Trainer ── TrainerPaymentMode
+                                                    Trainer
+                                                       │
+                                                  TrainerSettings ── TrainerPaymentMode
 ```
 
 **Key relationships:**
@@ -480,7 +505,8 @@ Member
 - `TrainerLog` N──1 `SessionOccurrence` (trainer hours are logged per occurrence)
 - `TrainerLog` N──1 `Trainer`
 - `TrainerLog` N──1 `TrainerLogStatus` (PENDING, APPROVED, REJECTED)
-- `Trainer` N──1 `TrainerPaymentMode` (PER_SESSION, MONTHLY)
+- `Trainer` 1──1 `TrainerSettings` (each trainer has exactly one settings record)
+- `TrainerSettings` N──1 `TrainerPaymentMode` (PER_SESSION, MONTHLY)
 - `Member` 1──N `MemberStatusHistory` N──1 `Status`
 
 ---
@@ -511,30 +537,31 @@ Member
 
 ### Mutations
 
-| Mutation                      | Input                                   | Returns               | Description                                                                   |
-| ----------------------------- | --------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
-| `createMember`                | `CreateMemberInput!`                    | `Member`              | Register a new member (auto-creates ACTIVE status)                            |
-| `updateMember`                | `id: ID!, UpdateMemberInput!`           | `Member`              | Update member details                                                         |
-| `changeMemberStatus`          | `ChangeMemberStatusInput!`              | `MemberStatusEntry`   | Record a status transition with optional reason                               |
-| `deleteMember`                | `id: ID!`                               | `DeleteMemberResult`  | GDPR erasure: anonymize personal data, end subscriptions                      |
-| `subscribeMember`             | `SubscribeMemberInput!`                 | `MemberSubscription`  | Subscribe a member to a membership type                                       |
-| `endSubscription`             | `id: ID!`                               | `MemberSubscription`  | Early termination (sets `endDate` to today if still in the future)            |
-| `createMembershipType`        | `CreateMembershipTypeInput!`            | `MembershipType`      | Define a new membership type (starts as `DRAFT`)                              |
-| `changeMembershipTypeStatus`  | `id: ID!, status: String!`              | `MembershipType`      | Transition membership type status (e.g. DRAFT → ACTIVE)                       |
-| `assignSessionToMembership`   | `membershipTypeId: ID!, sessionId: ID!` | `MembershipType`      | Link a session to a membership type                                           |
-| `removeSessionFromMembership` | `membershipTypeId: ID!, sessionId: ID!` | `MembershipType`      | Unlink a session from a membership type                                       |
-| `recordPayment`               | `RecordPaymentInput!`                   | `Payment`             | Record a payment for a subscription                                           |
-| `createSession`               | `CreateSessionInput!`                   | `Session`             | Create a recurring session (training or free game)                            |
-| `createSessionOccurrences`    | `CreateSessionOccurrencesInput!`        | `[SessionOccurrence]` | Bulk-create occurrences for a session over a date range (calendar scheduling) |
-| `cancelSessionOccurrence`     | `id: ID!`                               | `SessionOccurrence`   | Cancel a specific occurrence (sets status to `CANCELLED`)                     |
-| `completeSessionOccurrence`   | `id: ID!`                               | `SessionOccurrence`   | Mark a specific occurrence as completed (sets status to `COMPLETED`)          |
-| `createTrainer`               | `CreateTrainerInput!`                   | `Trainer`             | Register a new trainer                                                        |
-| `updateTrainer`               | `id: ID!, UpdateTrainerInput!`          | `Trainer`             | Update trainer details (contact info, rate, payment mode, auto-approve)       |
-| `logTrainerHours`             | `LogTrainerHoursInput!`                 | `TrainerLog`          | Admin directly logs hours (status set to `APPROVED`, bypasses approval flow)  |
-| `submitTrainerHours`          | `SubmitTrainerHoursInput!`              | `TrainerLog`          | Trainer submits hours (status `PENDING` or auto-approved per trainer setting) |
-| `approveTrainerLog`           | `id: ID!`                               | `TrainerLog`          | Approve a pending trainer log entry (sets status to `APPROVED`)               |
-| `rejectTrainerLog`            | `RejectTrainerLogInput!`                | `TrainerLog`          | Reject a pending trainer log entry with a reason                              |
-| `resubmitTrainerLog`          | `ResubmitTrainerLogInput!`              | `TrainerLog`          | Resubmit corrected hours after rejection (resets to `PENDING`)                |
+| Mutation                      | Input                                         | Returns               | Description                                                                   |
+| ----------------------------- | --------------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
+| `createMember`                | `CreateMemberInput!`                          | `Member`              | Register a new member (auto-creates ACTIVE status)                            |
+| `updateMember`                | `id: ID!, UpdateMemberInput!`                 | `Member`              | Update member details                                                         |
+| `changeMemberStatus`          | `ChangeMemberStatusInput!`                    | `MemberStatusEntry`   | Record a status transition with optional reason                               |
+| `deleteMember`                | `id: ID!`                                     | `DeleteMemberResult`  | GDPR erasure: anonymize personal data, end subscriptions                      |
+| `subscribeMember`             | `SubscribeMemberInput!`                       | `MemberSubscription`  | Subscribe a member to a membership type                                       |
+| `endSubscription`             | `id: ID!`                                     | `MemberSubscription`  | Early termination (sets `endDate` to today if still in the future)            |
+| `createMembershipType`        | `CreateMembershipTypeInput!`                  | `MembershipType`      | Define a new membership type (starts as `DRAFT`)                              |
+| `changeMembershipTypeStatus`  | `id: ID!, status: String!`                    | `MembershipType`      | Transition membership type status (e.g. DRAFT → ACTIVE)                       |
+| `assignSessionToMembership`   | `membershipTypeId: ID!, sessionId: ID!`       | `MembershipType`      | Link a session to a membership type                                           |
+| `removeSessionFromMembership` | `membershipTypeId: ID!, sessionId: ID!`       | `MembershipType`      | Unlink a session from a membership type                                       |
+| `recordPayment`               | `RecordPaymentInput!`                         | `Payment`             | Record a payment for a subscription                                           |
+| `createSession`               | `CreateSessionInput!`                         | `Session`             | Create a recurring session (training or free game)                            |
+| `createSessionOccurrences`    | `CreateSessionOccurrencesInput!`              | `[SessionOccurrence]` | Bulk-create occurrences for a session over a date range (calendar scheduling) |
+| `cancelSessionOccurrence`     | `id: ID!`                                     | `SessionOccurrence`   | Cancel a specific occurrence (sets status to `CANCELLED`)                     |
+| `completeSessionOccurrence`   | `id: ID!`                                     | `SessionOccurrence`   | Mark a specific occurrence as completed (sets status to `COMPLETED`)          |
+| `createTrainer`               | `CreateTrainerInput!`                         | `Trainer`             | Register a new trainer (also creates initial `TrainerSettings`)               |
+| `updateTrainer`               | `id: ID!, UpdateTrainerInput!`                | `Trainer`             | Update trainer contact details (name, email, phone)                           |
+| `updateTrainerSettings`       | `trainerId: ID!, UpdateTrainerSettingsInput!` | `TrainerSettings`     | Update trainer compensation and workflow settings (admin-only)                |
+| `logTrainerHours`             | `LogTrainerHoursInput!`                       | `TrainerLog`          | Admin directly logs hours (status set to `APPROVED`, bypasses approval flow)  |
+| `submitTrainerHours`          | `SubmitTrainerHoursInput!`                    | `TrainerLog`          | Trainer submits hours (status `PENDING` or auto-approved per trainer setting) |
+| `approveTrainerLog`           | `id: ID!`                                     | `TrainerLog`          | Approve a pending trainer log entry (sets status to `APPROVED`)               |
+| `rejectTrainerLog`            | `RejectTrainerLogInput!`                      | `TrainerLog`          | Reject a pending trainer log entry with a reason                              |
+| `resubmitTrainerLog`          | `ResubmitTrainerLogInput!`                    | `TrainerLog`          | Resubmit corrected hours after rejection (resets to `PENDING`)                |
 
 ---
 
@@ -601,14 +628,14 @@ Member
 
 ### TrainerHoursSummary (Response Type)
 
-| Field          | Type         | Description                                                 |
-| -------------- | ------------ | ----------------------------------------------------------- |
-| `trainer`      | `Trainer`    | The trainer                                                 |
-| `totalHours`   | `BigDecimal` | Sum of **approved** hours worked in the queried range       |
-| `sessionCount` | `Int`        | Number of approved sessions logged                          |
-| `totalOwed`    | `BigDecimal` | `totalHours × trainer.hourlyRate` — total compensation owed |
-| `from`         | `Date`       | Start of the queried range                                  |
-| `to`           | `Date`       | End of the queried range                                    |
+| Field          | Type         | Description                                                         |
+| -------------- | ------------ | ------------------------------------------------------------------- |
+| `trainer`      | `Trainer`    | The trainer                                                         |
+| `totalHours`   | `BigDecimal` | Sum of **approved** hours worked in the queried range               |
+| `sessionCount` | `Int`        | Number of approved sessions logged                                  |
+| `totalOwed`    | `BigDecimal` | `totalHours × trainerSettings.hourlyRate` — total compensation owed |
+| `from`         | `Date`       | Start of the queried range                                          |
+| `to`           | `Date`       | End of the queried range                                            |
 
 ### DeleteMemberResult (Response Type)
 
@@ -668,7 +695,7 @@ Bulk-creates session occurrences for a date range. The backend generates one occ
 | `hoursWorked`         | `BigDecimal!` | Not null, positive, max 24                                       |
 | `notes`               | `String`      | Optional                                                         |
 
-**Behavior:** The `trainerId` is inferred from the authenticated trainer (TRAINER role) or must be provided by admin. If the trainer's `autoApproveHours` is `true`, status is set to `APPROVED` and `reviewedAt` is populated. Otherwise, status is `PENDING`.
+**Behavior:** The `trainerId` is inferred from the authenticated trainer (TRAINER role) or must be provided by admin. If the trainer's `TrainerSettings.autoApproveHours` is `true`, status is set to `APPROVED` and `reviewedAt` is populated. Otherwise, status is `PENDING`.
 
 ### RejectTrainerLogInput
 
@@ -685,7 +712,7 @@ Bulk-creates session occurrences for a date range. The backend generates one occ
 | `hoursWorked` | `BigDecimal!` | Not null, positive, max 24 — corrected hours             |
 | `notes`       | `String`      | Optional — updated notes                                 |
 
-**Behavior:** Updates the existing log entry in place: sets `hoursWorked` and `notes` to new values, clears `rejectionReason`, resets status to `PENDING` (or `APPROVED` if `autoApproveHours`), clears `reviewedAt`.
+**Behavior:** Updates the existing log entry in place: sets `hoursWorked` and `notes` to new values, clears `rejectionReason`, resets status to `PENDING` (or `APPROVED` if `TrainerSettings.autoApproveHours`), clears `reviewedAt`.
 
 ### CreateTrainerInput
 
@@ -695,38 +722,47 @@ Bulk-creates session occurrences for a date range. The backend generates one occ
 | `lastName`         | `String!`     | Not null, not blank, max 100 characters                                 |
 | `email`            | `String!`     | Not null, valid email format, unique                                    |
 | `phoneNumber`      | `String`      | Optional                                                                |
-| `hourlyRate`       | `BigDecimal!` | Not null, positive (> 0)                                                |
+| `hourlyRate`       | `BigDecimal!` | Not null, positive (> 0) — initial setting for `TrainerSettings`        |
 | `paymentMode`      | `String!`     | Not null, must match TrainerPaymentMode (e.g. `PER_SESSION`, `MONTHLY`) |
 | `autoApproveHours` | `Boolean`     | Optional, defaults to `false`                                           |
 
+**Behavior:** Creates both the `Trainer` (identity) and its `TrainerSettings` (compensation/workflow) in a single transaction. The settings fields (`hourlyRate`, `paymentMode`, `autoApproveHours`) are stored in the `TrainerSettings` entity, not on the `Trainer` itself.
+
 ### UpdateTrainerInput
 
-| Field              | Type         | Constraints                                                    |
-| ------------------ | ------------ | -------------------------------------------------------------- |
-| `firstName`        | `String`     | Optional, max 100 characters                                   |
-| `lastName`         | `String`     | Optional, max 100 characters                                   |
-| `email`            | `String`     | Optional, valid email format, unique                           |
-| `phoneNumber`      | `String`     | Optional                                                       |
-| `hourlyRate`       | `BigDecimal` | Optional, positive (> 0) — **admin-only field**                |
-| `paymentMode`      | `String`     | Optional, must match TrainerPaymentMode — **admin-only field** |
-| `autoApproveHours` | `Boolean`    | Optional — **admin-only field**                                |
+| Field         | Type     | Constraints                          |
+| ------------- | -------- | ------------------------------------ |
+| `firstName`   | `String` | Optional, max 100 characters         |
+| `lastName`    | `String` | Optional, max 100 characters         |
+| `email`       | `String` | Optional, valid email format, unique |
+| `phoneNumber` | `String` | Optional                             |
 
-**Behavior:** Trainers can update only `firstName`, `lastName`, `email`, `phoneNumber`. Attempting to change `hourlyRate`, `paymentMode`, or `autoApproveHours` as a TRAINER returns an authorization error. Admin can update all fields.
+**Behavior:** Updates only the trainer's **identity and contact details**. Both trainers (own record) and admins (any record) can use this mutation. Compensation and workflow settings are managed separately via `updateTrainerSettings`.
+
+### UpdateTrainerSettingsInput
+
+| Field              | Type         | Constraints                             |
+| ------------------ | ------------ | --------------------------------------- |
+| `hourlyRate`       | `BigDecimal` | Optional, positive (> 0)                |
+| `paymentMode`      | `String`     | Optional, must match TrainerPaymentMode |
+| `autoApproveHours` | `Boolean`    | Optional                                |
+
+**Behavior:** Admin-only. Updates the trainer's compensation and workflow settings in the `TrainerSettings` entity. Trainers cannot modify their own settings — attempting to call this as a TRAINER returns an authorization error.
 
 ### TrainerPaymentSummary (Response Type)
 
-| Field              | Type         | Description                                             |
-| ------------------ | ------------ | ------------------------------------------------------- |
-| `trainer`          | `Trainer`    | The trainer                                             |
-| `from`             | `Date`       | Start of the queried range                              |
-| `to`               | `Date`       | End of the queried range                                |
-| `approvedHours`    | `BigDecimal` | Sum of approved hours in the range                      |
-| `approvedSessions` | `Int`        | Count of approved log entries                           |
-| `hourlyRate`       | `BigDecimal` | The trainer's current hourly rate                       |
-| `totalOwed`        | `BigDecimal` | `approvedHours × hourlyRate`                            |
-| `paymentMode`      | `String`     | The trainer's payment mode (`PER_SESSION` or `MONTHLY`) |
-| `pendingHours`     | `BigDecimal` | Sum of hours in `PENDING` status (not yet approved)     |
-| `pendingSessions`  | `Int`        | Count of pending log entries                            |
+| Field              | Type         | Description                                              |
+| ------------------ | ------------ | -------------------------------------------------------- |
+| `trainer`          | `Trainer`    | The trainer                                              |
+| `from`             | `Date`       | Start of the queried range                               |
+| `to`               | `Date`       | End of the queried range                                 |
+| `approvedHours`    | `BigDecimal` | Sum of approved hours in the range                       |
+| `approvedSessions` | `Int`        | Count of approved log entries                            |
+| `hourlyRate`       | `BigDecimal` | The trainer's current hourly rate (from TrainerSettings) |
+| `totalOwed`        | `BigDecimal` | `approvedHours × hourlyRate`                             |
+| `paymentMode`      | `String`     | The trainer's payment mode (from TrainerSettings)        |
+| `pendingHours`     | `BigDecimal` | Sum of hours in `PENDING` status (not yet approved)      |
+| `pendingSessions`  | `Int`        | Count of pending log entries                             |
 
 ---
 
@@ -785,15 +821,17 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 | `createSessionOccurrences`    |   ✓   |        |         | Admin-only — bulk calendar scheduling                                                     |
 | `cancelSessionOccurrence`     |   ✓   |        |         | Admin-only — cancel individual occurrences                                                |
 | `completeSessionOccurrence`   |   ✓   |        |         | Admin-only — mark occurrences as completed                                                |
-| `createTrainer`               |   ✓   |        |         | Admin-only                                                                                |
-| `updateTrainer`               |   ✓   |        |    ✓    | Trainers update own contact details; admin updates any trainer including rate/mode        |
+| `createTrainer`               |   ✓   |        |         | Admin-only — creates trainer + initial TrainerSettings                                    |
+| `updateTrainer`               |   ✓   |        |    ✓    | Trainers update own contact details; admin updates any trainer                            |
+| `updateTrainerSettings`       |   ✓   |        |         | Admin-only — update compensation and workflow settings                                    |
+| `updateTrainerSettings`       |   ✓   |        |         | Admin-only — update compensation and workflow settings                                    |
 | `logTrainerHours`             |   ✓   |        |         | Admin-only — directly log hours (bypasses approval if desired)                            |
 | `submitTrainerHours`          |   ✓   |        |    ✓    | Trainer submits own hours; starts as PENDING (or auto-approved). Admin can submit for any |
 | `approveTrainerLog`           |   ✓   |        |         | Admin-only — approve pending hours                                                        |
 | `rejectTrainerLog`            |   ✓   |        |         | Admin-only — reject pending hours with a reason                                           |
 | `resubmitTrainerLog`          |   ✓   |        |    ✓    | Trainer resubmits corrected hours after rejection. Admin can do for any                   |
 
-> **Note:** `updateTrainer` has no MEMBER column entry because members and trainers are independent roles — a member is not a trainer.
+> **Note:** `updateTrainer` has no MEMBER column entry because members and trainers are independent roles — a member is not a trainer. `updateTrainerSettings` is admin-only with no trainer or member access.
 
 ### Authorization Rules
 
@@ -803,7 +841,7 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 4. **Member data isolation**: When a member queries `memberById`, `memberSubscriptions`, `paymentsByMember`, or `paymentsBySubscription`, the system enforces that the requested data belongs to the authenticated member. Attempting to access another member's data returns an authorization error.
 5. **Membership type visibility**: Members see only `ACTIVE` membership types via `membershipTypes`. `DRAFT` and `INACTIVE` types are hidden from members — they are administrative concerns.
 6. **Session visibility for members**: Members can see all sessions and occurrences via `sessions`/`sessionOccurrences` (public schedule), but `mySessions` and `myNextSession` filter to only sessions linked to the member's active subscriptions. Attendance is voluntary — the system only informs, it does not enforce.
-7. **Trainer self-service scope**: A trainer can submit their own hours (`submitTrainerHours`), view their own pending/approved/rejected logs (`pendingTrainerLogs`, `trainerHours`), view their payment summary (`myTrainerPaymentSummary`), view their assigned sessions (`mySessions`, `myNextSession`), and update their own contact details (`updateTrainer` — limited to `firstName`, `lastName`, `email`, `phoneNumber`). A trainer **cannot** modify their own `hourlyRate`, `paymentMode`, or `autoApproveHours` — those are admin-only fields.
+7. **Trainer self-service scope**: A trainer can submit their own hours (`submitTrainerHours`), view their own pending/approved/rejected logs (`pendingTrainerLogs`, `trainerHours`), view their payment summary (`myTrainerPaymentSummary`), view their assigned sessions (`mySessions`, `myNextSession`), and update their own contact details (`updateTrainer` — limited to `firstName`, `lastName`, `email`, `phoneNumber`). A trainer **cannot** modify their own settings — `hourlyRate`, `paymentMode`, and `autoApproveHours` are managed exclusively by admins via `updateTrainerSettings`.
 8. **Trainer data isolation**: When a trainer queries `trainerHours`, `pendingTrainerLogs`, or `myTrainerPaymentSummary`, the system enforces that the data belongs to the authenticated trainer. Attempting to access another trainer's data returns an authorization error.
 9. **Admin approval authority**: Only an admin can approve or reject trainer hour submissions (`approveTrainerLog`, `rejectTrainerLog`). The admin can also directly log hours (`logTrainerHours`) which bypasses the approval workflow entirely (status is set to `APPROVED` immediately).
 10. **Future self-service (out of scope)**: Phase 2 may introduce member self-registration, online payment, and subscription renewal requests. Phase 1 assumes all member write operations go through an administrator.
@@ -878,20 +916,20 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 
 39. **Duplicate email**: Same uniqueness constraint as members.
 40. **Trainer deletion**: Not in scope for Phase 1 — trainers can only be created, not removed.
-41. **Hourly rate**: The `hourlyRate` on Trainer is the contractual rate. Changes to `hourlyRate` apply only to **future** log entries — already-approved hours are not retroactively recalculated.
+41. **Hourly rate**: The `hourlyRate` on `TrainerSettings` is the contractual rate. Changes to `hourlyRate` apply only to **future** log entries — already-approved hours are not retroactively recalculated.
 42. **Payment mode**: `PER_SESSION` means the trainer's compensation is due after each `APPROVED` log entry. `MONTHLY` means approved hours are aggregated at month end. The system tracks what is owed; actual disbursement is out of scope for Phase 1 (handled externally via bank transfer, etc.).
 
 ### Trainer Hour Submissions & Approval
 
 43. **Submission**: Trainers submit hours via `submitTrainerHours`. The system validates that the referenced `SessionOccurrence` is `COMPLETED`, belongs to a `TRAINING` session assigned to this trainer, and that no existing log entry already exists for the same (trainerId, sessionOccurrenceId) pair.
-44. **Duplicate log prevention**: At most one `TrainerLog` entry per (trainerId, sessionOccurrenceId) pair. Attempting to submit hours for an occurrence that already has a log entry (regardless of status) returns a validation error.
-45. **Auto-approval**: When `autoApproveHours` is `true` on the trainer, `submitTrainerHours` sets the log status directly to `APPROVED` and populates `reviewedAt`. No admin action is required. This is a per-trainer setting — the admin can enable or disable it at any time via `updateTrainer`.
-46. **Manual approval**: When `autoApproveHours` is `false`, submitted hours start at `PENDING`. The admin must call `approveTrainerLog` or `rejectTrainerLog`. The `pendingTrainerLogs` query shows all entries awaiting review.
+44. **Duplicate log prevention**: At most one `TrainerLog` entry may exist per (trainerId, sessionOccurrenceId) pair — enforced by a unique constraint.
+45. **Auto-approval**: When `autoApproveHours` is `true` in the trainer's `TrainerSettings`, `submitTrainerHours` sets the log status directly to `APPROVED` and populates `reviewedAt`. No admin action is required. This is a per-trainer setting — the admin can enable or disable it at any time via `updateTrainerSettings`.
+46. **Manual approval**: When `autoApproveHours` is `false` (the default in `TrainerSettings`), submitted hours start at `PENDING`. The admin must call `approveTrainerLog` or `rejectTrainerLog`. The `pendingTrainerLogs` query shows all entries awaiting review.
 47. **Rejection**: When the admin rejects a log entry, a `rejectionReason` must be provided (not blank). The trainer can see the reason and resubmit corrected hours via `resubmitTrainerLog`.
-48. **Resubmission**: `resubmitTrainerLog` updates the existing entry in place (does not create a new row). Only `REJECTED` entries can be resubmitted. The status resets to `PENDING` (or `APPROVED` if `autoApproveHours`), `rejectionReason` is cleared, and `reviewedAt` is reset.
+48. **Resubmission**: `resubmitTrainerLog` updates the existing entry in place (does not create a new row). Only `REJECTED` entries can be resubmitted. The status resets to `PENDING` (or `APPROVED` if `TrainerSettings.autoApproveHours`), `rejectionReason` is cleared, and `reviewedAt` is reset.
 49. **Approved is terminal**: Once a log entry is `APPROVED`, it cannot be changed — not unapproved, not modified, not deleted. If a correction is needed, the admin must handle it manually (out of scope for Phase 1).
 50. **Admin direct logging**: `logTrainerHours` (admin-only) bypasses the approval workflow entirely — the entry is created with status `APPROVED` and both `submittedAt` and `reviewedAt` set to the current timestamp. This is intended for retroactive corrections or when the admin logs hours on behalf of the trainer.
-51. **Payment calculation**: For any date range, the trainer's total owed = sum of (`hoursWorked × trainer.hourlyRate`) across all `APPROVED` log entries within that range. The `trainerHours` and `myTrainerPaymentSummary` queries expose this calculation.
+51. **Payment calculation**: For any date range, the trainer's total owed = sum of (`hoursWorked × trainerSettings.hourlyRate`) across all `APPROVED` log entries within that range. The `trainerHours` and `myTrainerPaymentSummary` queries expose this calculation.
 
 ### GDPR — Right to Erasure (Art. 17 DSGVO)
 
@@ -2007,7 +2045,7 @@ Calculation: `360.00 × (122 / 365) = 120.22` (rounded to 2 decimal places).
 
 ### Example 16 — Trainer submits hours (manual approval workflow)
 
-Karl Weber (trainer) conducts Wednesday's beginner training on 2026-09-03. The admin marks the occurrence as completed, then Karl submits his hours. Karl's `autoApproveHours` is `false`, so hours go to `PENDING`.
+Karl Weber (trainer) conducts Wednesday's beginner training on 2026-09-03. The admin marks the occurrence as completed, then Karl submits his hours. Karl's `TrainerSettings.autoApproveHours` is `false`, so hours go to `PENDING`.
 
 **Step 1: Admin marks the occurrence as completed**
 
@@ -2108,7 +2146,7 @@ mutation {
 
 ### Example 17 — Trainer submits hours (auto-approval)
 
-Eva Gruber (trainer) has `autoApproveHours: true`. She submits hours after her Thursday training session:
+Eva Gruber (trainer) has `TrainerSettings.autoApproveHours: true`. She submits hours after her Thursday training session:
 
 ```graphql
 mutation {
@@ -2277,7 +2315,7 @@ Not applicable in the traditional algorithmic sense. Performance targets for Pha
 | Mutations             | < 100 ms                        |
 | Outstanding payments  | < 500 ms (involves aggregation) |
 
-Database indices should cover: `member.email`, `member_status_history.member_id`, `member_status_history.changed_at`, `member_subscription.member_id`, `member_subscription.membership_type_id`, `member_subscription.end_date`, `payment.member_subscription_id`, `session.day_of_week`, `session.trainer_id`, `session.session_type_id`, `session_occurrence.session_id`, `session_occurrence.date`, `session_occurrence(session_id, date)` (unique), `trainer_log.trainer_id`, `trainer_log.session_occurrence_id`, `trainer_log.status_id`, `trainer_log(trainer_id, session_occurrence_id)` (unique), `membership_type_session` (composite PK).
+Database indices should cover: `member.email`, `member_status_history.member_id`, `member_status_history.changed_at`, `member_subscription.member_id`, `member_subscription.membership_type_id`, `member_subscription.end_date`, `payment.member_subscription_id`, `session.day_of_week`, `session.trainer_id`, `session.session_type_id`, `session_occurrence.session_id`, `session_occurrence.date`, `session_occurrence(session_id, date)` (unique), `trainer_log.trainer_id`, `trainer_log.session_occurrence_id`, `trainer_log.status_id`, `trainer_log(trainer_id, session_occurrence_id)` (unique), `trainer_settings.trainer_id` (unique), `membership_type_session` (composite PK).
 
 ---
 
@@ -2352,7 +2390,7 @@ at.mavila.dbchatbox.domain.club.subscription   — MemberSubscription entity, se
 at.mavila.dbchatbox.domain.club.membership     — MembershipType entity, MembershipTypeStatus, MembershipTypeSession, service
 at.mavila.dbchatbox.domain.club.payment        — Payment entity, service, outstanding-dues logic
 at.mavila.dbchatbox.domain.club.session        — Session entity, SessionType, SessionOccurrence, SessionOccurrenceStatus, service
-at.mavila.dbchatbox.domain.club.trainer        — Trainer entity, TrainerLog, hours aggregation
+at.mavila.dbchatbox.domain.club.trainer        — Trainer entity, TrainerSettings entity, TrainerLog, hours aggregation
 ```
 
 ### Database Migrations — Flyway
@@ -2406,6 +2444,7 @@ Flyway migrations under `src/main/resources/db/migration/` for all tables includ
 - `session_occurrence_status` (with seed data: SCHEDULED, CANCELLED, COMPLETED)
 - `session_occurrence` (concrete dated instances of sessions)
 - `membership_type_session` (join table — replaces former membership_type_training_session)
+- `trainer_settings` (one-to-one with trainer — compensation and workflow settings)
 
 ### Data Access Layer — JPA Repositories
 
