@@ -104,8 +104,7 @@ class TrainerLogServiceTest {
       when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
       when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
 
-      assertThatThrownBy(() -> service.logTrainerHours(
-          new LogTrainerHoursCommand(1L, 100L, BigDecimal.ZERO, null)))
+      assertThatThrownBy(() -> service.logTrainerHours(new LogTrainerHoursCommand(1L, 100L, BigDecimal.ZERO, null)))
           .isInstanceOf(InvalidOperationException.class).hasMessageContaining("positive");
     }
   }
@@ -121,8 +120,8 @@ class TrainerLogServiceTest {
       when(trainerLogRepository.existsByTrainerIdAndSessionOccurrenceId(1L, 100L)).thenReturn(false);
       when(trainerLogRepository.save(any(TrainerLog.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      final TrainerLog result = service.submitTrainerHours(
-          new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(1.5), null));
+      final TrainerLog result = service
+          .submitTrainerHours(new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(1.5), null));
 
       assertThat(result.getStatus()).isEqualTo(TrainerLogStatus.PENDING);
     }
@@ -136,8 +135,8 @@ class TrainerLogServiceTest {
       when(trainerLogRepository.existsByTrainerIdAndSessionOccurrenceId(1L, 100L)).thenReturn(false);
       when(trainerLogRepository.save(any(TrainerLog.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      final TrainerLog result = service.submitTrainerHours(
-          new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(1.5), null));
+      final TrainerLog result = service
+          .submitTrainerHours(new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(1.5), null));
 
       assertThat(result.getStatus()).isEqualTo(TrainerLogStatus.APPROVED);
     }
