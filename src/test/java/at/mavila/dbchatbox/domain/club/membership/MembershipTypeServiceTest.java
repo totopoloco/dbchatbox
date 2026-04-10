@@ -41,8 +41,8 @@ class MembershipTypeServiceTest {
       when(membershipTypeRepository.existsByName("Gold")).thenReturn(false);
       when(membershipTypeRepository.save(any(MembershipType.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      final MembershipType result = service.create("Gold", "Gold plan", BigDecimal.valueOf(99.99), 1, Unit.MONTHS,
-          false);
+      final MembershipType result = service.create(
+          new CreateMembershipTypeCommand("Gold", "Gold plan", BigDecimal.valueOf(99.99), 1, Unit.MONTHS, false));
 
       assertThat(result.getStatus()).isEqualTo(MembershipTypeStatus.DRAFT);
       assertThat(result.getName()).isEqualTo("Gold");
@@ -52,7 +52,8 @@ class MembershipTypeServiceTest {
     void shouldRejectDuplicateName() {
       when(membershipTypeRepository.existsByName("Gold")).thenReturn(true);
 
-      assertThatThrownBy(() -> service.create("Gold", "Desc", BigDecimal.TEN, 1, Unit.MONTHS, false))
+      assertThatThrownBy(
+          () -> service.create(new CreateMembershipTypeCommand("Gold", "Desc", BigDecimal.TEN, 1, Unit.MONTHS, false)))
           .isInstanceOf(DuplicateNameException.class);
     }
   }

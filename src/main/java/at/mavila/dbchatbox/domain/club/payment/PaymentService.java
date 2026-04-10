@@ -31,28 +31,19 @@ public class PaymentService {
   /**
    * Records a payment against a subscription.
    *
-   * @param memberSubscriptionId
-   *                               the subscription ID
-   * @param amount
-   *                               the payment amount (must be positive)
-   * @param currency
-   *                               the currency code (defaults to EUR)
-   * @param paymentDate
-   *                               the payment date
-   * @param notes
-   *                               optional notes
+   * @param command
+   *                  the record-payment command
    * @return the created payment
    * @throws ResourceNotFoundException
    *                                     if the subscription does not exist
    * @throws InvalidOperationException
    *                                     if the subscription has ended or amount is not positive
    */
-  public Payment recordPayment(final Long memberSubscriptionId, final BigDecimal amount, final String currency,
-      final LocalDate paymentDate, final String notes) {
-    final MemberSubscription subscription = subscriptionRepository.findById(memberSubscriptionId)
-        .orElseThrow(() -> new ResourceNotFoundException("MemberSubscription", memberSubscriptionId));
+  public Payment recordPayment(final RecordPaymentCommand command) {
+    final MemberSubscription subscription = subscriptionRepository.findById(command.memberSubscriptionId())
+        .orElseThrow(() -> new ResourceNotFoundException("MemberSubscription", command.memberSubscriptionId()));
 
-    if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+    if (command.amount().compareTo(BigDecimal.ZERO) <= 0) {
       throw new InvalidOperationException("Payment amount must be positive");
     }
 
@@ -60,8 +51,9 @@ public class PaymentService {
       throw new InvalidOperationException("Cannot record payment for an ended subscription");
     }
 
-    final Payment payment = Payment.builder().memberSubscription(subscription).amount(amount)
-        .currency(isNull(currency) ? "EUR" : currency).paymentDate(paymentDate).notes(notes).build();
+    final Payment payment = Payment.builder().memberSubscription(subscription).amount(command.amount())
+        .currency(isNull(command.currency()) ? "EUR" : command.currency()).paymentDate(command.paymentDate())
+        .notes(command.notes()).build();
 
     return paymentRepository.save(payment);
   }

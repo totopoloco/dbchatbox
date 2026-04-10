@@ -3,7 +3,6 @@ package at.mavila.dbchatbox.domain.club.membership;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 
@@ -36,31 +35,20 @@ public class MembershipTypeService {
   /**
    * Creates a new membership type in DRAFT status.
    *
-   * @param name
-   *                       the name (unique)
-   * @param description
-   *                       the description (optional)
-   * @param price
-   *                       the price per period
-   * @param duration
-   *                       the duration value
-   * @param unit
-   *                       the duration unit
-   * @param proratedMode
-   *                       whether automatic proration is enabled
+   * @param command
+   *                  the creation command
    * @return the created membership type
    * @throws DuplicateNameException
    *                                  if the name is already in use
    */
-  public MembershipType create(final String name, final String description, final BigDecimal price,
-      final Integer duration, final Unit unit, final Boolean proratedMode) {
-    if (membershipTypeRepository.existsByName(name)) {
-      throw new DuplicateNameException("MembershipType", name);
+  public MembershipType create(final CreateMembershipTypeCommand command) {
+    if (membershipTypeRepository.existsByName(command.name())) {
+      throw new DuplicateNameException("MembershipType", command.name());
     }
 
-    final MembershipType type = MembershipType.builder().name(name).description(description).price(price)
-        .duration(duration).unit(unit).status(MembershipTypeStatus.DRAFT)
-        .proratedMode(isNull(proratedMode) ? false : proratedMode).build();
+    final MembershipType type = MembershipType.builder().name(command.name()).description(command.description())
+        .price(command.price()).duration(command.duration()).unit(command.unit()).status(MembershipTypeStatus.DRAFT)
+        .proratedMode(isNull(command.proratedMode()) ? false : command.proratedMode()).build();
 
     return membershipTypeRepository.save(type);
   }

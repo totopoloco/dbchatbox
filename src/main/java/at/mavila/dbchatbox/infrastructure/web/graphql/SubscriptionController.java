@@ -13,6 +13,7 @@ import org.springframework.stereotype.Controller;
 
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionService;
+import at.mavila.dbchatbox.domain.club.subscription.SubscribeMemberCommand;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -40,10 +41,11 @@ public class SubscriptionController {
   @MutationMapping
   public MemberSubscription subscribeMember(@Argument
   final Map<String, Object> input) {
-    return subscriptionService.subscribeMember(Long.valueOf(input.get("memberId").toString()),
+    final var command = new SubscribeMemberCommand(Long.valueOf(input.get("memberId").toString()),
         Long.valueOf(input.get("membershipTypeId").toString()), (LocalDate) input.get("startDate"),
         (LocalDate) input.get("endDate"),
         input.containsKey("agreedPrice") ? new BigDecimal(input.get("agreedPrice").toString()) : null);
+    return subscriptionService.subscribeMember(command);
   }
 
   @MutationMapping

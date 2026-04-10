@@ -34,19 +34,24 @@ class TrainerLogServiceTest {
   @Mock
   private TrainerRepository trainerRepository;
   @Mock
+  private TrainerSettingsRepository trainerSettingsRepository;
+  @Mock
   private SessionOccurrenceRepository occurrenceRepository;
 
   @InjectMocks
   private TrainerLogService service;
 
   private Trainer trainer;
+  private TrainerSettings settings;
   private Session session;
   private SessionOccurrence occurrence;
 
   @BeforeEach
   void setUp() {
-    trainer = Trainer.builder().id(1L).firstName("Alice").lastName("Smith").email("alice@example.com")
-        .hourlyRate(BigDecimal.valueOf(50)).paymentMode(TrainerPaymentMode.PER_SESSION).autoApproveHours(false).build();
+    trainer = Trainer.builder().id(1L).firstName("Alice").lastName("Smith").email("alice@example.com").build();
+
+    settings = TrainerSettings.builder().id(1001L).trainer(trainer).hourlyRate(BigDecimal.valueOf(50))
+        .paymentMode(TrainerPaymentMode.PER_SESSION).autoApproveHours(false).build();
 
     session = Session.builder().id(10L).name("Yoga").sessionType(SessionType.TRAINING).dayOfWeek(DayOfWeek.MONDAY)
         .startTime(LocalTime.of(9, 0)).endTime(LocalTime.of(10, 0)).location("Room A").trainer(trainer).build();
@@ -65,7 +70,8 @@ class TrainerLogServiceTest {
       when(trainerLogRepository.existsByTrainerIdAndSessionOccurrenceId(1L, 100L)).thenReturn(false);
       when(trainerLogRepository.save(any(TrainerLog.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      final TrainerLog result = service.logTrainerHours(1L, 100L, BigDecimal.valueOf(2), "Good session");
+      final TrainerLog result = service
+          .logTrainerHours(new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(2), "Good session"));
 
       assertThat(result.getStatus()).isEqualTo(TrainerLogStatus.APPROVED);
       assertThat(result.getHoursWorked()).isEqualByComparingTo(BigDecimal.valueOf(2));
@@ -77,7 +83,8 @@ class TrainerLogServiceTest {
       when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
       when(trainerLogRepository.existsByTrainerIdAndSessionOccurrenceId(1L, 100L)).thenReturn(true);
 
-      assertThatThrownBy(() -> service.logTrainerHours(1L, 100L, BigDecimal.valueOf(2), null))
+      assertThatThrownBy(
+          () -> service.logTrainerHours(new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(2), null)))
           .isInstanceOf(InvalidOperationException.class).hasMessageContaining("already exists");
     }
 
@@ -87,7 +94,8 @@ class TrainerLogServiceTest {
       when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
       when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
 
-      assertThatThrownBy(() -> service.logTrainerHours(1L, 100L, BigDecimal.valueOf(2), null))
+      assertThatThrownBy(
+          () -> service.logTrainerHours(new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(2), null)))
           .isInstanceOf(InvalidOperationException.class).hasMessageContaining("COMPLETED");
     }
 
@@ -96,7 +104,12 @@ class TrainerLogServiceTest {
       when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
       when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
 
-      assertThatThrownBy(() -> service.logTrainerHours(1L, 100L, BigDecimal.ZERO, null))
+      assertThatThrownBy(() -> service.logTrainerHours(
+          new LogTrainerHoursCommand(1L, 100L, BigDecimal.ZERO, null)
+      when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
+
+      assertThatThrownBy(() -> service.logTrainerHours(
+          new LogTrainerHoursCommand(1L, 100L, BigDecimal.ZERO, null)))
           .isInstanceOf(InvalidOperationException.class).hasMessageContaining("positive");
     }
   }
@@ -107,24 +120,30 @@ class TrainerLogServiceTest {
     @Test
     void shouldCreatePendingEntryWhenAutoApproveIsFalse() {
       when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
-      when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
-      when(trainerLogRepository.existsByTrainerIdAndSessionOccurrenceId(1L, 100L)).thenReturn(false);
-      when(trainerLogRepository.save(any(TrainerLog.class))).thenAnswer(inv -> inv.getArgument(0));
-
-      final TrainerLog result = service.submitTrainerHours(1L, 100L, BigDecimal.valueOf(1.5), null);
+      when(trainerSettingsRepository.findByTrainerId(1L)).thenReturn(Optional.of(settings));
+      when(occurrenceRepository.findById(100L))
+          .thenReturn(new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(1.5), null));
 
       assertThat(result.getStatus()).isEqualTo(TrainerLogStatus.PENDING);
     }
 
     @Test
-    void shouldAutoApproveWhenTrainerFlagIsSet() {
-      trainer.setAutoApproveHours(true);
+    void shouldAutoApproveWhenSettingsFlagIsSet() {
+      settings.setAutoApproveHours(true);
       when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
+      when(trainerSettingsRepository.findByTrainerId(1L)).thenReturn(Optional.of(settings));
       when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
       when(trainerLogRepository.existsByTrainerIdAndSessionOccurrenceId(1L, 100L)).thenReturn(false);
       when(trainerLogRepository.save(any(TrainerLog.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      final TrainerLog result = service.submitTrainerHours(1L, 100L, BigDecimal.valueOf(1.5), null);
+      final TrainerLog result = service.submitTrainerHours(
+          new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(1.5), null)
+      when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
+      when(trainerLogRepository.existsByTrainerIdAndSessionOccurrenceId(1L, 100L)).thenReturn(false);
+      when(trainerLogRepository.save(any(TrainerLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+      final TrainerLog result = service.submitTrainerHours(
+          new LogTrainerHoursCommand(1L, 100L, BigDecimal.valueOf(1.5), null));
 
       assertThat(result.getStatus()).isEqualTo(TrainerLogStatus.APPROVED);
     }
@@ -167,15 +186,8 @@ class TrainerLogServiceTest {
 
       final TrainerLog result = service.rejectLog(200L, "Hours seem too high");
 
-      assertThat(result.getStatus()).isEqualTo(TrainerLogStatus.REJECTED);
-      assertThat(result.getRejectionReason()).isEqualTo("Hours seem too high");
-    }
-
     @Test
     void shouldRejectWithoutReason() {
-      final TrainerLog log = TrainerLog.builder().id(200L).status(TrainerLogStatus.PENDING).build();
-      when(trainerLogRepository.findById(200L)).thenReturn(Optional.of(log));
-
       assertThatThrownBy(() -> service.rejectLog(200L, "")).isInstanceOf(InvalidOperationException.class)
           .hasMessageContaining("reason");
     }
@@ -189,6 +201,7 @@ class TrainerLogServiceTest {
       final TrainerLog log = TrainerLog.builder().id(200L).trainer(trainer).sessionOccurrence(occurrence)
           .hoursWorked(BigDecimal.valueOf(10)).status(TrainerLogStatus.REJECTED).rejectionReason("Too high").build();
       when(trainerLogRepository.findById(200L)).thenReturn(Optional.of(log));
+      when(trainerSettingsRepository.findByTrainerId(1L)).thenReturn(Optional.of(settings));
       when(trainerLogRepository.save(any(TrainerLog.class))).thenAnswer(inv -> inv.getArgument(0));
 
       final TrainerLog result = service.resubmitLog(200L, BigDecimal.valueOf(2), "Corrected");
@@ -205,6 +218,7 @@ class TrainerLogServiceTest {
     @Test
     void shouldCalculateSummary() {
       when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
+      when(trainerSettingsRepository.findByTrainerId(1L)).thenReturn(Optional.of(settings));
       when(trainerLogRepository.sumApprovedHoursByTrainerAndDateRange(1L, LocalDate.of(2024, 6, 1),
           LocalDate.of(2024, 6, 30))).thenReturn(BigDecimal.valueOf(20));
       when(trainerLogRepository.countApprovedByTrainerAndDateRange(1L, LocalDate.of(2024, 6, 1),

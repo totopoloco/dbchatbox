@@ -14,6 +14,9 @@ import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.stereotype.Controller;
 
 import at.mavila.dbchatbox.domain.club.trainer.Trainer;
+import at.mavila.dbchatbox.domain.club.training.CreateOccurrencesCommand;
+import at.mavila.dbchatbox.domain.club.training.CreateSessionCommand;
+import at.mavila.dbchatbox.domain.club.training.OccurrenceFilter;
 import at.mavila.dbchatbox.domain.club.training.Session;
 import at.mavila.dbchatbox.domain.club.training.SessionOccurrence;
 import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceService;
@@ -50,7 +53,7 @@ public class SessionController {
   final LocalDate to, @Argument
   final String status) {
     final SessionOccurrenceStatus statusEnum = nonNull(status) ? SessionOccurrenceStatus.valueOf(status) : null;
-    return occurrenceService.findOccurrences(sessionId, from, to, statusEnum);
+    return occurrenceService.findOccurrences(new OccurrenceFilter(sessionId, from, to, statusEnum));
   }
 
   @QueryMapping
@@ -82,10 +85,11 @@ public class SessionController {
   @MutationMapping
   public Session createSession(@Argument
   final Map<String, Object> input) {
-    return sessionService.createSession((String) input.get("name"),
+    final var command = new CreateSessionCommand((String) input.get("name"),
         SessionType.valueOf((String) input.get("sessionType")), DayOfWeek.valueOf((String) input.get("dayOfWeek")),
         (LocalTime) input.get("startTime"), (LocalTime) input.get("endTime"), (String) input.get("location"),
         input.containsKey("trainerId") ? Long.valueOf(input.get("trainerId").toString()) : null);
+    return sessionService.createSession(command);
   }
 
   @MutationMapping
@@ -95,8 +99,9 @@ public class SessionController {
     @SuppressWarnings("unchecked")
     final List<LocalDate> skipDates = input.containsKey("skipDates") ? (List<LocalDate>) input.get("skipDates") : null;
 
-    return occurrenceService.createOccurrences(Long.valueOf(input.get("sessionId").toString()),
+    final var command = new CreateOccurrencesCommand(Long.valueOf(input.get("sessionId").toString()),
         (LocalDate) input.get("startDate"), (LocalDate) input.get("endDate"), skipDates);
+    return occurrenceService.createOccurrences(command);
   }
 
   @MutationMapping

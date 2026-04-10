@@ -8,13 +8,19 @@ import java.util.Map;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.stereotype.Controller;
 
+import at.mavila.dbchatbox.domain.club.trainer.CreateTrainerCommand;
+import at.mavila.dbchatbox.domain.club.trainer.LogTrainerHoursCommand;
 import at.mavila.dbchatbox.domain.club.trainer.Trainer;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerLog;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerLogService;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerPaymentMode;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerService;
+import at.mavila.dbchatbox.domain.club.trainer.TrainerSettings;
+import at.mavila.dbchatbox.domain.club.trainer.UpdateTrainerCommand;
+import at.mavila.dbchatbox.domain.club.trainer.UpdateTrainerSettingsCommand;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -64,43 +70,62 @@ public class TrainerController {
         "pendingSessions", summary.pendingSessions());
   }
 
+  // ==================== FIELD RESOLVERS ====================
+
+  @SchemaMapping(typeName = "Trainer", field = "settings")
+  public TrainerSettings trainerSettings(final Trainer trainer) {
+    return trainerService.findSettingsByTrainerId(trainer.getId());
+  }
+
   // ==================== MUTATIONS ====================
 
   @MutationMapping
   public Trainer createTrainer(@Argument
   final Map<String, Object> input) {
-    return trainerService.createTrainer((String) input.get("firstName"), (String) input.get("lastName"),
+    final var command = new CreateTrainerCommand((String) input.get("firstName"), (String) input.get("lastName"),
         (String) input.get("email"), (String) input.get("phoneNumber"),
         new BigDecimal(input.get("hourlyRate").toString()),
         TrainerPaymentMode.valueOf((String) input.get("paymentMode")),
         input.containsKey("autoApproveHours") ? (Boolean) input.get("autoApproveHours") : null);
+    return trainerService.createTrainer(command);
   }
 
   @MutationMapping
   public Trainer updateTrainer(@Argument
   final Long id, @Argument
   final Map<String, Object> input) {
-    return trainerService.updateTrainer(id, (String) input.get("firstName"), (String) input.get("lastName"),
-        (String) input.get("email"), (String) input.get("phoneNumber"),
+    final var command = new UpdateTrainerCommand((String) input.get("firstName"), (String) input.get("lastName"),
+        (String) input.get("email"), (String) input.get("phoneNumber"));
+    return trainerService.updateTrainer(id, command);
+  }
+
+  @MutationMapping
+  public TrainerSettings updateTrainerSettings(@Argument
+  final Long trainerId, @Argument
+  final Map<String, Object> input) {
+    final var command = new UpdateTrainerSettingsCommand(
         input.containsKey("hourlyRate") ? new BigDecimal(input.get("hourlyRate").toString()) : null,
         input.containsKey("paymentMode") ? TrainerPaymentMode.valueOf((String) input.get("paymentMode")) : null,
         input.containsKey("autoApproveHours") ? (Boolean) input.get("autoApproveHours") : null);
+    return trainerService.updateTrainerSettings(trainerId, command);
   }
 
   @MutationMapping
   public TrainerLog logTrainerHours(@Argument
   final Map<String, Object> input) {
-    return trainerLogService.logTrainerHours(Long.valueOf(input.get("trainerId").toString()),
+    final var command = new LogTrainerHoursCommand(Long.valueOf(input.get("trainerId").toString()),
         Long.valueOf(input.get("sessionOccurrenceId").toString()), new BigDecimal(input.get("hoursWorked").toString()),
         (String) input.get("notes"));
+    return trainerLogService.logTrainerHours(command);
   }
 
   @MutationMapping
   public TrainerLog submitTrainerHours(@Argument
   final Map<String, Object> input) {
-    return trainerLogService.submitTrainerHours(Long.valueOf(input.get("trainerId").toString()),
+    final var command = new LogTrainerHoursCommand(Long.valueOf(input.get("trainerId").toString()),
         Long.valueOf(input.get("sessionOccurrenceId").toString()), new BigDecimal(input.get("hoursWorked").toString()),
         (String) input.get("notes"));
+    return trainerLogService.submitTrainerHours(command);
   }
 
   @MutationMapping

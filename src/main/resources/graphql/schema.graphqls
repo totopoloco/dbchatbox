@@ -134,11 +134,17 @@ type Mutation {
   "Mark a specific occurrence as completed"
   completeSessionOccurrence(id: ID!): SessionOccurrence!
 
-  "Register a new trainer"
+  "Register a new trainer (also creates initial TrainerSettings)"
   createTrainer(input: CreateTrainerInput!): Trainer!
 
-  "Update trainer details"
+  "Update trainer contact details (name, email, phone)"
   updateTrainer(id: ID!, input: UpdateTrainerInput!): Trainer!
+
+  "Update trainer compensation and workflow settings (admin-only)"
+  updateTrainerSettings(
+    trainerId: ID!
+    input: UpdateTrainerSettingsInput!
+  ): TrainerSettings!
 
   "Admin directly logs hours (status set to APPROVED)"
   logTrainerHours(input: LogTrainerHoursInput!): TrainerLog!
@@ -234,6 +240,11 @@ type Trainer {
   lastName: String!
   email: String!
   phoneNumber: String
+  settings: TrainerSettings
+}
+
+type TrainerSettings {
+  id: ID!
   hourlyRate: BigDecimal!
   paymentMode: String!
   autoApproveHours: Boolean!
@@ -372,6 +383,9 @@ input UpdateTrainerInput {
   lastName: String
   email: String
   phoneNumber: String
+}
+
+input UpdateTrainerSettingsInput {
   hourlyRate: BigDecimal
   paymentMode: String
   autoApproveHours: Boolean

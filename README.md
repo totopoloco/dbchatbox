@@ -48,7 +48,8 @@ The H2 console is at `http://localhost:8080/h2-console` (dev profile only, JDBC 
 The system manages a sports/social club with the following core entities:
 
 - **Member** — club members with status lifecycle (ACTIVE → INACTIVE → DELETED)
-- **Trainer** — trainers who lead sessions
+- **Trainer** — trainers who lead sessions (contact details only)
+- **TrainerSettings** — per-trainer compensation and workflow settings (hourly rate, payment mode, auto-approve)
 - **MembershipType** — subscription templates (e.g. "Gold Monthly") with pricing and linked sessions
 - **MemberSubscription** — a member's active subscription to a membership type
 - **Payment** — payments against subscriptions
@@ -118,6 +119,39 @@ mutation {
     reason
   }
 }
+
+# Register a trainer (also creates initial TrainerSettings)
+mutation {
+  createTrainer(
+    input: {
+      firstName: "Bob"
+      lastName: "Trainer"
+      email: "bob@club.at"
+      hourlyRate: 35.00
+      paymentMode: "PER_SESSION"
+    }
+  ) {
+    id
+    firstName
+    settings {
+      hourlyRate
+      paymentMode
+      autoApproveHours
+    }
+  }
+}
+
+# Update trainer compensation settings (admin-only)
+mutation {
+  updateTrainerSettings(
+    trainerId: "456"
+    input: { hourlyRate: 40.00, paymentMode: "MONTHLY" }
+  ) {
+    hourlyRate
+    paymentMode
+    autoApproveHours
+  }
+}
 ```
 
 ## GDPR Support
@@ -136,7 +170,7 @@ src/main/java/at/mavila/dbchatbox/
 │   │   ├── exception/   # Domain exceptions
 │   │   ├── member/      # Member entity, service, GDPR service, repository
 │   │   ├── membership/  # MembershipType, MemberSubscription, Payment
-│   │   ├── trainer/     # Trainer, TrainerLog
+│   │   ├── trainer/     # Trainer, TrainerSettings, TrainerLog
 │   │   └── training/    # Session, SessionOccurrence
 │   └── support/         # TSID generator
 └── infrastructure/

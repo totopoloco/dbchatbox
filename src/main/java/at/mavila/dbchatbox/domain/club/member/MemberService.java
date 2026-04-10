@@ -3,7 +3,6 @@ package at.mavila.dbchatbox.domain.club.member;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -36,30 +35,20 @@ public class MemberService {
   /**
    * Registers a new member and creates an initial ACTIVE status entry.
    *
-   * @param firstName
-   *                      the first name (required)
-   * @param lastName
-   *                      the last name (required)
-   * @param email
-   *                      the email address (required, unique)
-   * @param phoneNumber
-   *                      the phone number (optional)
-   * @param memberSince
-   *                      the date the member joined (required)
-   * @param memberUntil
-   *                      the date membership expires (optional)
+   * @param command
+   *                  the member creation command
    * @return the created member
    * @throws DuplicateEmailException
    *                                   if the email is already in use
    */
-  public Member createMember(final String firstName, final String lastName, final String email,
-      final String phoneNumber, final LocalDate memberSince, final LocalDate memberUntil) {
-    if (memberRepository.existsByEmail(email)) {
-      throw new DuplicateEmailException(email);
+  public Member createMember(final CreateMemberCommand command) {
+    if (memberRepository.existsByEmail(command.email())) {
+      throw new DuplicateEmailException(command.email());
     }
 
-    final Member member = Member.builder().firstName(firstName).lastName(lastName).email(email).phoneNumber(phoneNumber)
-        .memberSince(memberSince).memberUntil(memberUntil).build();
+    final Member member = Member.builder().firstName(command.firstName()).lastName(command.lastName())
+        .email(command.email()).phoneNumber(command.phoneNumber()).memberSince(command.memberSince())
+        .memberUntil(command.memberUntil()).build();
 
     final Member saved = memberRepository.save(member);
 
@@ -72,19 +61,9 @@ public class MemberService {
    * Updates an existing member's details.
    *
    * @param id
-   *                      the member ID
-   * @param firstName
-   *                      new first name (null to keep current)
-   * @param lastName
-   *                      new last name (null to keep current)
-   * @param email
-   *                      new email (null to keep current)
-   * @param phoneNumber
-   *                      new phone number (null to keep current)
-   * @param memberSince
-   *                      new member-since date (null to keep current)
-   * @param memberUntil
-   *                      new member-until date (null to keep current)
+   *                  the member ID
+   * @param command
+   *                  the member update command (null fields are not changed)
    * @return the updated member
    * @throws MemberNotFoundException
    *                                   if the member does not exist
@@ -93,31 +72,30 @@ public class MemberService {
    * @throws DuplicateEmailException
    *                                   if the new email is already in use
    */
-  public Member updateMember(final Long id, final String firstName, final String lastName, final String email,
-      final String phoneNumber, final LocalDate memberSince, final LocalDate memberUntil) {
+  public Member updateMember(final Long id, final UpdateMemberCommand command) {
     final Member member = findByIdOrThrow(id);
     guardDeleted(member);
 
-    if (nonNull(firstName)) {
-      member.setFirstName(firstName);
+    if (nonNull(command.firstName())) {
+      member.setFirstName(command.firstName());
     }
-    if (nonNull(lastName)) {
-      member.setLastName(lastName);
+    if (nonNull(command.lastName())) {
+      member.setLastName(command.lastName());
     }
-    if (nonNull(email) && !email.equals(member.getEmail())) {
-      if (memberRepository.existsByEmailAndIdNot(email, id)) {
-        throw new DuplicateEmailException(email);
+    if (nonNull(command.email()) && !command.email().equals(member.getEmail())) {
+      if (memberRepository.existsByEmailAndIdNot(command.email(), id)) {
+        throw new DuplicateEmailException(command.email());
       }
-      member.setEmail(email);
+      member.setEmail(command.email());
     }
-    if (nonNull(phoneNumber)) {
-      member.setPhoneNumber(phoneNumber);
+    if (nonNull(command.phoneNumber())) {
+      member.setPhoneNumber(command.phoneNumber());
     }
-    if (nonNull(memberSince)) {
-      member.setMemberSince(memberSince);
+    if (nonNull(command.memberSince())) {
+      member.setMemberSince(command.memberSince());
     }
-    if (nonNull(memberUntil)) {
-      member.setMemberUntil(memberUntil);
+    if (nonNull(command.memberUntil())) {
+      member.setMemberUntil(command.memberUntil());
     }
 
     return memberRepository.save(member);

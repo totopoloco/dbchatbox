@@ -37,31 +37,23 @@ public class SessionOccurrenceService {
    * Idempotent: skips dates that already have an occurrence. Skips dates in the skipDates list.
    * </p>
    *
-   * @param sessionId
-   *                    the session ID
-   * @param startDate
-   *                    the start date (inclusive)
-   * @param endDate
-   *                    the end date (inclusive)
-   * @param skipDates
-   *                    dates to exclude (optional)
+   * @param command
+   *                  the creation command
    * @return newly created occurrences
    * @throws ResourceNotFoundException
    *                                     if the session does not exist
    */
-  public List<SessionOccurrence> createOccurrences(final Long sessionId, final LocalDate startDate,
-      final LocalDate endDate, final List<LocalDate> skipDates) {
-    final Session session = sessionRepository.findById(sessionId)
-        .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
+  public List<SessionOccurrence> createOccurrences(final CreateOccurrencesCommand command) {
+    final Session session = sessionRepository.findById(command.sessionId())
+        .orElseThrow(() -> new ResourceNotFoundException("Session", command.sessionId()));
 
     final DayOfWeek targetDay = session.getDayOfWeek();
-    final Set<LocalDate> skip = isNull(skipDates) ? Set.of() : new HashSet<>(skipDates);
+    final Set<LocalDate> skip = isNull(command.skipDates()) ? Set.of() : new HashSet<>(command.skipDates());
     final List<SessionOccurrence> created = new ArrayList<>();
 
-    LocalDate current = startDate;
-    while (!current.isAfter(endDate)) {
-      if (current.getDayOfWeek() == targetDay && !skip.contains(current)
-          && !occurrenceRepository.existsBySessionIdAndDate(sessionId, current)) {
+    LocalDate current = command.startDate();
+    while (!current.isAfter(command.endDate())) {
+      if (shouldCreateOccurrence(current, targetDay, skip, command.sessionId())) {
         final SessionOccurrence occurrence = SessionOccurrence.builder().session(session).date(current)
             .status(SessionOccurrenceStatus.SCHEDULED).build();
         created.add(occurrenceRepository.save(occurrence));
@@ -111,24 +103,22 @@ public class SessionOccurrenceService {
   /**
    * Finds occurrences, optionally filtered by session, date range, and status.
    *
-   * @param sessionId
-   *                    the session ID (optional)
-   * @param from
-   *                    start date (optional)
-   * @param to
-   *                    end date (optional)
-   * @param status
-   *                    the status filter (optional)
+   * @param filter
+   *                 the occurrence filter (all fields optional)
    * @return matching occurrences
    */
   @Transactional(readOnly = true)
-  public List<SessionOccurrence> findOccurrences(final Long sessionId, final LocalDate from, final LocalDate to,
-      final SessionOccurrenceStatus status) {
-    if (nonNull(sessionId) && nonNull(from) && nonNull(to) && nonNull(status)) {
-      return occurrenceRepository.findBySessionIdAndDateBetweenAndStatus(sessionId, from, to, status);
+  public List<SessionOccurrence> findOccurrences(final OccurrenceFilter filter) {
+    final boolean hasSession = nonNull(filter.sessionId());
+    final boolean hasDateRange = nonNull(filter.from()) && nonNull(filter.to());
+    final boolean hasStatus = nonNull(filter.status());
+
+    if (hasSession && hasDateRange && hasStatus) {
+      return occurrenceRepository.findBySessionIdAndDateBetweenAndStatus(filter.sessionId(), filter.from(), filter.to(),
+          filter.status());
     }
-    if (nonNull(sessionId) && nonNull(from) && nonNull(to)) {
-      return occurrenceRepository.findBySessionIdAndDateBetween(sessionId, from, to);
+    if (hasSession && hasDateRange) {
+      return occurrenceRepository.findBySessionIdAndDateBetween(filter.sessionId(), filter.from(), filter.to());
     }
     return occurrenceRepository.findAll();
   }
@@ -170,5 +160,11 @@ public class SessionOccurrenceService {
       throw new InvalidOperationException(
           "Cannot %s occurrence with status %s (must be SCHEDULED)".formatted(action, occurrence.getStatus()));
     }
+  }
+
+  private boolean shouldCreateOccurrence(final LocalDate date, final DayOfWeek targetDay, final Set<LocalDate> skip,
+      final Long sessionId) {
+    return date.getDayOfWeek() == targetDay && !skip.contains(date)
+        && !occurrenceRepository.existsBySessionIdAndDate(sessionId, date);
   }
 }

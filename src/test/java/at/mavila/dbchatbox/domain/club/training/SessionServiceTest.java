@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.List;
@@ -21,7 +20,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import at.mavila.dbchatbox.domain.club.exception.InvalidOperationException;
 import at.mavila.dbchatbox.domain.club.exception.OverlapException;
 import at.mavila.dbchatbox.domain.club.trainer.Trainer;
-import at.mavila.dbchatbox.domain.club.trainer.TrainerPaymentMode;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,16 +38,15 @@ class SessionServiceTest {
 
     @Test
     void shouldCreateTrainingSession() {
-      final Trainer trainer = Trainer.builder().id(1L).firstName("Bob").lastName("T").email("bob@test.com")
-          .hourlyRate(BigDecimal.TEN).paymentMode(TrainerPaymentMode.PER_SESSION).build();
+      final Trainer trainer = Trainer.builder().id(1L).firstName("Bob").lastName("T").email("bob@test.com").build();
 
       when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
       when(sessionRepository.findByTrainerIdAndDayOfWeek(1L, DayOfWeek.MONDAY)).thenReturn(List.of());
       when(sessionRepository.findByLocationAndDayOfWeek("Room A", DayOfWeek.MONDAY)).thenReturn(List.of());
       when(sessionRepository.save(any(Session.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      final Session result = sessionService.createSession("Yoga", SessionType.TRAINING, DayOfWeek.MONDAY,
-          LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", 1L);
+      final Session result = sessionService.createSession(new CreateSessionCommand("Yoga", SessionType.TRAINING,
+          DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", 1L));
 
       assertThat(result.getName()).isEqualTo("Yoga");
       assertThat(result.getTrainer()).isEqualTo(trainer);
@@ -57,37 +54,37 @@ class SessionServiceTest {
 
     @Test
     void shouldRejectTrainingWithoutTrainer() {
-      assertThatThrownBy(() -> sessionService.createSession("Yoga", SessionType.TRAINING, DayOfWeek.MONDAY,
-          LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", null)).isInstanceOf(InvalidOperationException.class)
-          .hasMessageContaining("trainerId");
+      assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Yoga", SessionType.TRAINING,
+          DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", null)))
+          .isInstanceOf(InvalidOperationException.class).hasMessageContaining("trainerId");
     }
 
     @Test
     void shouldRejectFreeGameWithTrainer() {
-      assertThatThrownBy(() -> sessionService.createSession("Open Play", SessionType.FREE_GAME, DayOfWeek.MONDAY,
-          LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", 1L)).isInstanceOf(InvalidOperationException.class)
-          .hasMessageContaining("FREE_GAME");
+      assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Open Play", SessionType.FREE_GAME,
+          DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", 1L)))
+          .isInstanceOf(InvalidOperationException.class).hasMessageContaining("FREE_GAME");
     }
 
     @Test
     void shouldRejectInvalidTimeOrdering() {
-      assertThatThrownBy(() -> sessionService.createSession("Yoga", SessionType.FREE_GAME, DayOfWeek.MONDAY,
-          LocalTime.of(10, 0), LocalTime.of(9, 0), "Room A", null)).isInstanceOf(InvalidOperationException.class)
-          .hasMessageContaining("endTime");
+      assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Yoga", SessionType.FREE_GAME,
+          DayOfWeek.MONDAY, LocalTime.of(10, 0), LocalTime.of(9, 0), "Room A", null)))
+          .isInstanceOf(InvalidOperationException.class).hasMessageContaining("endTime");
     }
 
     @Test
     void shouldDetectTrainerOverlap() {
-      final Trainer trainer = Trainer.builder().id(1L).firstName("Bob").lastName("T").email("bob@test.com")
-          .hourlyRate(BigDecimal.TEN).paymentMode(TrainerPaymentMode.PER_SESSION).build();
+      final Trainer trainer = Trainer.builder().id(1L).firstName("Bob").lastName("T").email("bob@test.com").build();
       final Session existing = Session.builder().id(99L).startTime(LocalTime.of(9, 30)).endTime(LocalTime.of(10, 30))
           .build();
 
       when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
       when(sessionRepository.findByTrainerIdAndDayOfWeek(1L, DayOfWeek.MONDAY)).thenReturn(List.of(existing));
 
-      assertThatThrownBy(() -> sessionService.createSession("Pilates", SessionType.TRAINING, DayOfWeek.MONDAY,
-          LocalTime.of(9, 0), LocalTime.of(10, 0), "Room B", 1L)).isInstanceOf(OverlapException.class);
+      assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Pilates", SessionType.TRAINING,
+          DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0), "Room B", 1L)))
+          .isInstanceOf(OverlapException.class);
     }
 
     @Test
@@ -97,8 +94,9 @@ class SessionServiceTest {
 
       when(sessionRepository.findByLocationAndDayOfWeek("Room A", DayOfWeek.MONDAY)).thenReturn(List.of(existing));
 
-      assertThatThrownBy(() -> sessionService.createSession("Open Play", SessionType.FREE_GAME, DayOfWeek.MONDAY,
-          LocalTime.of(9, 15), LocalTime.of(10, 15), "Room A", null)).isInstanceOf(OverlapException.class);
+      assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Open Play", SessionType.FREE_GAME,
+          DayOfWeek.MONDAY, LocalTime.of(9, 15), LocalTime.of(10, 15), "Room A", null)))
+          .isInstanceOf(OverlapException.class);
     }
   }
 
@@ -107,10 +105,8 @@ class SessionServiceTest {
 
     @Test
     void shouldExcludeTrainersWithOverlappingSessions() {
-      final Trainer busy = Trainer.builder().id(1L).firstName("Busy").lastName("T").email("busy@t.com")
-          .hourlyRate(BigDecimal.TEN).paymentMode(TrainerPaymentMode.PER_SESSION).build();
-      final Trainer free = Trainer.builder().id(2L).firstName("Free").lastName("T").email("free@t.com")
-          .hourlyRate(BigDecimal.TEN).paymentMode(TrainerPaymentMode.PER_SESSION).build();
+      final Trainer busy = Trainer.builder().id(1L).firstName("Busy").lastName("T").email("busy@t.com").build();
+      final Trainer free = Trainer.builder().id(2L).firstName("Free").lastName("T").email("free@t.com").build();
       final Session existing = Session.builder().id(99L).startTime(LocalTime.of(9, 0)).endTime(LocalTime.of(10, 0))
           .build();
 

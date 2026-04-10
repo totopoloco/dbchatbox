@@ -11,6 +11,7 @@ import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.stereotype.Controller;
 
+import at.mavila.dbchatbox.domain.club.membership.CreateMembershipTypeCommand;
 import at.mavila.dbchatbox.domain.club.membership.MembershipType;
 import at.mavila.dbchatbox.domain.club.membership.MembershipTypeService;
 import at.mavila.dbchatbox.domain.club.membership.MembershipTypeStatus;
@@ -42,10 +43,11 @@ public class MembershipController {
   @MutationMapping
   public MembershipType createMembershipType(@Argument
   final Map<String, Object> input) {
-    return membershipTypeService.create((String) input.get("name"), (String) input.get("description"),
+    final var command = new CreateMembershipTypeCommand((String) input.get("name"), (String) input.get("description"),
         new BigDecimal(input.get("price").toString()), ((Number) input.get("duration")).intValue(),
         Unit.valueOf((String) input.get("unit")),
         input.containsKey("proratedMode") ? (Boolean) input.get("proratedMode") : null);
+    return membershipTypeService.create(command);
   }
 
   @MutationMapping

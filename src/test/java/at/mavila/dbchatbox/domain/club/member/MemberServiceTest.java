@@ -53,8 +53,8 @@ class MemberServiceTest {
       when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
       when(statusHistoryRepository.save(any(MemberStatusHistory.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      final Member result = memberService.createMember("John", "Doe", "john@example.com", null,
-          LocalDate.of(2024, 1, 1), null);
+      final Member result = memberService.createMember(
+          new CreateMemberCommand("John", "Doe", "john@example.com", null, LocalDate.of(2024, 1, 1), null));
 
       assertThat(result).isNotNull();
       assertThat(result.getFirstName()).isEqualTo("John");
@@ -66,8 +66,8 @@ class MemberServiceTest {
     void shouldRejectDuplicateEmail() {
       when(memberRepository.existsByEmail("john@example.com")).thenReturn(true);
 
-      assertThatThrownBy(
-          () -> memberService.createMember("John", "Doe", "john@example.com", null, LocalDate.of(2024, 1, 1), null))
+      assertThatThrownBy(() -> memberService.createMember(
+          new CreateMemberCommand("John", "Doe", "john@example.com", null, LocalDate.of(2024, 1, 1), null)))
           .isInstanceOf(DuplicateEmailException.class).hasMessageContaining("john@example.com");
     }
   }
@@ -82,7 +82,8 @@ class MemberServiceTest {
           Optional.of(MemberStatusHistory.builder().status(Status.ACTIVE).changedAt(LocalDateTime.now()).build()));
       when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
 
-      final Member result = memberService.updateMember(1L, "Jane", null, null, null, null, null);
+      final Member result = memberService.updateMember(1L,
+          new UpdateMemberCommand("Jane", null, null, null, null, null));
 
       assertThat(result).isNotNull();
       verify(memberRepository).save(argThat(m -> m.getFirstName().equals("Jane")));
@@ -94,7 +95,8 @@ class MemberServiceTest {
       when(statusHistoryRepository.findFirstByMemberIdOrderByChangedAtDesc(1L)).thenReturn(
           Optional.of(MemberStatusHistory.builder().status(Status.DELETED).changedAt(LocalDateTime.now()).build()));
 
-      assertThatThrownBy(() -> memberService.updateMember(1L, "Jane", null, null, null, null, null))
+      assertThatThrownBy(
+          () -> memberService.updateMember(1L, new UpdateMemberCommand("Jane", null, null, null, null, null)))
           .isInstanceOf(MemberDeletedException.class);
     }
 
@@ -105,7 +107,8 @@ class MemberServiceTest {
           Optional.of(MemberStatusHistory.builder().status(Status.ACTIVE).changedAt(LocalDateTime.now()).build()));
       when(memberRepository.existsByEmailAndIdNot("other@example.com", 1L)).thenReturn(true);
 
-      assertThatThrownBy(() -> memberService.updateMember(1L, null, null, "other@example.com", null, null, null))
+      assertThatThrownBy(() -> memberService.updateMember(1L,
+          new UpdateMemberCommand(null, null, "other@example.com", null, null, null)))
           .isInstanceOf(DuplicateEmailException.class);
     }
   }

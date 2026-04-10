@@ -33,42 +33,34 @@ public class SessionService {
   /**
    * Creates a new recurring session.
    *
-   * @param name
-   *                      the session name
-   * @param sessionType
-   *                      the session type (TRAINING or FREE_GAME)
-   * @param dayOfWeek
-   *                      the day of the week
-   * @param startTime
-   *                      the start time
-   * @param endTime
-   *                      the end time (must be after startTime)
-   * @param location
-   *                      the location
-   * @param trainerId
-   *                      the trainer ID (required for TRAINING, must be null for FREE_GAME)
+   * @param command
+   *                  the session creation command
    * @return the created session
    * @throws InvalidOperationException
    *                                     if time ordering is invalid or trainer/type mismatch
    * @throws OverlapException
    *                                     if trainer or location overlap is detected
    */
-  public Session createSession(final String name, final SessionType sessionType, final DayOfWeek dayOfWeek,
-      final LocalTime startTime, final LocalTime endTime, final String location, final Long trainerId) {
-    validateTimeOrdering(startTime, endTime);
-    validateTrainerRequirement(sessionType, trainerId);
+  public Session createSession(final CreateSessionCommand command) {
+    validateTimeOrdering(command.startTime(), command.endTime());
+    validateTrainerRequirement(command.sessionType(), command.trainerId());
 
     Trainer trainer = null;
-    if (nonNull(trainerId)) {
-      trainer = trainerRepository.findById(trainerId)
-          .orElseThrow(() -> new ResourceNotFoundException("Trainer", trainerId));
-      checkTrainerOverlap(trainerId, dayOfWeek, startTime, endTime, null);
+    if (nonNull(command.trainerId())) {
+      trainer = trainerRepository.findById(command.trainerId())
+          .orElseThrow(() -> new ResourceNotFoundException("Trainer", command.trainerId()));
+      checkOverlap(sessionRepository.findByTrainerIdAndDayOfWeek(command.trainerId(), command.dayOfWeek()),
+          command.startTime(), command.endTime(), null,
+          "Trainer already has a session on %s with overlapping time".formatted(command.dayOfWeek()));
     }
 
-    checkLocationOverlap(location, dayOfWeek, startTime, endTime, null);
+    checkOverlap(sessionRepository.findByLocationAndDayOfWeek(command.location(), command.dayOfWeek()),
+        command.startTime(), command.endTime(), null, "Location '%s' already has a session on %s with overlapping time"
+            .formatted(command.location(), command.dayOfWeek()));
 
-    final Session session = Session.builder().name(name).sessionType(sessionType).dayOfWeek(dayOfWeek)
-        .startTime(startTime).endTime(endTime).location(location).trainer(trainer).build();
+    final Session session = Session.builder().name(command.name()).sessionType(command.sessionType())
+        .dayOfWeek(command.dayOfWeek()).startTime(command.startTime()).endTime(command.endTime())
+        .location(command.location()).trainer(trainer).build();
 
     return sessionRepository.save(session);
   }
@@ -117,7 +109,9 @@ public class SessionService {
   public List<Trainer> findAvailableTrainers(final DayOfWeek dayOfWeek, final LocalTime startTime,
       final LocalTime endTime) {
     return trainerRepository.findAll().stream()
-        .filter(trainer -> !hasOverlappingSession(trainer.getId(), dayOfWeek, startTime, endTime)).toList();
+        .filter(trainer -> !hasOverlap(sessionRepository.findByTrainerIdAndDayOfWeek(trainer.getId(), dayOfWeek),
+            startTime, endTime, null))
+        .toList();
   }
 
   private void validateTimeOrdering(final LocalTime startTime, final LocalTime endTime) {
@@ -135,34 +129,16 @@ public class SessionService {
     }
   }
 
-  private void checkTrainerOverlap(final Long trainerId, final DayOfWeek dayOfWeek, final LocalTime startTime,
-      final LocalTime endTime, final Long excludeSessionId) {
-    final List<Session> existing = sessionRepository.findByTrainerIdAndDayOfWeek(trainerId, dayOfWeek);
-    final boolean hasOverlap = existing.stream()
-        .filter(s -> isNull(excludeSessionId) || !s.getId().equals(excludeSessionId))
-        .anyMatch(s -> timesOverlap(startTime, endTime, s.getStartTime(), s.getEndTime()));
-
-    if (hasOverlap) {
-      throw new OverlapException("Trainer already has a session on %s with overlapping time".formatted(dayOfWeek));
+  private void checkOverlap(final List<Session> existing, final LocalTime startTime, final LocalTime endTime,
+      final Long excludeSessionId, final String errorMessage) {
+    if (hasOverlap(existing, startTime, endTime, excludeSessionId)) {
+      throw new OverlapException(errorMessage);
     }
   }
 
-  private void checkLocationOverlap(final String location, final DayOfWeek dayOfWeek, final LocalTime startTime,
-      final LocalTime endTime, final Long excludeSessionId) {
-    final List<Session> existing = sessionRepository.findByLocationAndDayOfWeek(location, dayOfWeek);
-    final boolean hasOverlap = existing.stream()
-        .filter(s -> isNull(excludeSessionId) || !s.getId().equals(excludeSessionId))
-        .anyMatch(s -> timesOverlap(startTime, endTime, s.getStartTime(), s.getEndTime()));
-
-    if (hasOverlap) {
-      throw new OverlapException(
-          "Location '%s' already has a session on %s with overlapping time".formatted(location, dayOfWeek));
-    }
-  }
-
-  private boolean hasOverlappingSession(final Long trainerId, final DayOfWeek dayOfWeek, final LocalTime startTime,
-      final LocalTime endTime) {
-    return sessionRepository.findByTrainerIdAndDayOfWeek(trainerId, dayOfWeek).stream()
+  private boolean hasOverlap(final List<Session> sessions, final LocalTime startTime, final LocalTime endTime,
+      final Long excludeSessionId) {
+    return sessions.stream().filter(s -> isNull(excludeSessionId) || !s.getId().equals(excludeSessionId))
         .anyMatch(s -> timesOverlap(startTime, endTime, s.getStartTime(), s.getEndTime()));
   }
 

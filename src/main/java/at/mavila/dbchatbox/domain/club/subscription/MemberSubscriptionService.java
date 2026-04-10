@@ -42,16 +42,8 @@ public class MemberSubscriptionService {
   /**
    * Subscribes a member to a membership type.
    *
-   * @param memberId
-   *                           the member ID
-   * @param membershipTypeId
-   *                           the membership type ID
-   * @param startDate
-   *                           the start date
-   * @param endDate
-   *                           the end date (null to compute from duration)
-   * @param agreedPrice
-   *                           the agreed price (null to compute from type or prorate)
+   * @param command
+   *                  the subscribe command
    * @return the created subscription
    * @throws MemberNotFoundException
    *                                     if the member does not exist
@@ -62,27 +54,29 @@ public class MemberSubscriptionService {
    * @throws InvalidOperationException
    *                                     if the membership type is not ACTIVE
    */
-  public MemberSubscription subscribeMember(final Long memberId, final Long membershipTypeId, final LocalDate startDate,
-      final LocalDate endDate, final BigDecimal agreedPrice) {
-    final Member member = memberRepository.findById(memberId).orElseThrow(() -> new MemberNotFoundException(memberId));
+  public MemberSubscription subscribeMember(final SubscribeMemberCommand command) {
+    final Member member = memberRepository.findById(command.memberId())
+        .orElseThrow(() -> new MemberNotFoundException(command.memberId()));
 
     if (memberService.getCurrentStatus(member) == Status.DELETED) {
-      throw new MemberDeletedException(memberId);
+      throw new MemberDeletedException(command.memberId());
     }
 
-    final MembershipType type = membershipTypeRepository.findById(membershipTypeId)
-        .orElseThrow(() -> new ResourceNotFoundException("MembershipType", membershipTypeId));
+    final MembershipType type = membershipTypeRepository.findById(command.membershipTypeId())
+        .orElseThrow(() -> new ResourceNotFoundException("MembershipType", command.membershipTypeId()));
 
     if (type.getStatus() != MembershipTypeStatus.ACTIVE) {
       throw new InvalidOperationException(
           "Can only subscribe to ACTIVE membership types, current status: %s".formatted(type.getStatus().name()));
     }
 
-    final LocalDate computedEndDate = nonNull(endDate) ? endDate : computeEndDate(startDate, type);
-    final BigDecimal computedPrice = resolveAgreedPrice(agreedPrice, type, startDate, computedEndDate);
+    final LocalDate computedEndDate = nonNull(command.endDate()) ? command.endDate()
+        : computeEndDate(command.startDate(), type);
+    final BigDecimal computedPrice = resolveAgreedPrice(command.agreedPrice(), type, command.startDate(),
+        computedEndDate);
 
     final MemberSubscription subscription = MemberSubscription.builder().member(member).membershipType(type)
-        .startDate(startDate).endDate(computedEndDate).agreedPrice(computedPrice).build();
+        .startDate(command.startDate()).endDate(computedEndDate).agreedPrice(computedPrice).build();
 
     return subscriptionRepository.save(subscription);
   }

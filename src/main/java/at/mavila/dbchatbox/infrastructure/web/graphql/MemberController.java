@@ -12,11 +12,13 @@ import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.stereotype.Controller;
 
+import at.mavila.dbchatbox.domain.club.member.CreateMemberCommand;
 import at.mavila.dbchatbox.domain.club.member.Member;
 import at.mavila.dbchatbox.domain.club.member.MemberGdprService;
 import at.mavila.dbchatbox.domain.club.member.MemberService;
 import at.mavila.dbchatbox.domain.club.member.MemberStatusHistory;
 import at.mavila.dbchatbox.domain.club.member.Status;
+import at.mavila.dbchatbox.domain.club.member.UpdateMemberCommand;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionService;
 import lombok.RequiredArgsConstructor;
@@ -60,18 +62,20 @@ public class MemberController {
   @MutationMapping
   public Member createMember(@Argument
   final Map<String, Object> input) {
-    return memberService.createMember((String) input.get("firstName"), (String) input.get("lastName"),
+    final var command = new CreateMemberCommand((String) input.get("firstName"), (String) input.get("lastName"),
         (String) input.get("email"), (String) input.get("phoneNumber"), (LocalDate) input.get("memberSince"),
         (LocalDate) input.get("memberUntil"));
+    return memberService.createMember(command);
   }
 
   @MutationMapping
   public Member updateMember(@Argument
   final Long id, @Argument
   final Map<String, Object> input) {
-    return memberService.updateMember(id, (String) input.get("firstName"), (String) input.get("lastName"),
+    final var command = new UpdateMemberCommand((String) input.get("firstName"), (String) input.get("lastName"),
         (String) input.get("email"), (String) input.get("phoneNumber"), (LocalDate) input.get("memberSince"),
         (LocalDate) input.get("memberUntil"));
+    return memberService.updateMember(id, command);
   }
 
   @MutationMapping

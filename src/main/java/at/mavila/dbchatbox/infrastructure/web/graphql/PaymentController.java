@@ -15,6 +15,7 @@ import at.mavila.dbchatbox.domain.club.member.MemberService;
 import at.mavila.dbchatbox.domain.club.membership.MembershipType;
 import at.mavila.dbchatbox.domain.club.payment.Payment;
 import at.mavila.dbchatbox.domain.club.payment.PaymentService;
+import at.mavila.dbchatbox.domain.club.payment.RecordPaymentCommand;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import lombok.RequiredArgsConstructor;
 
@@ -61,8 +62,9 @@ public class PaymentController {
   @MutationMapping
   public Payment recordPayment(@Argument
   final Map<String, Object> input) {
-    return paymentService.recordPayment(Long.valueOf(input.get("memberSubscriptionId").toString()),
+    final var command = new RecordPaymentCommand(Long.valueOf(input.get("memberSubscriptionId").toString()),
         new BigDecimal(input.get("amount").toString()), (String) input.get("currency"),
         (LocalDate) input.get("paymentDate"), (String) input.get("notes"));
+    return paymentService.recordPayment(command);
   }
 }
