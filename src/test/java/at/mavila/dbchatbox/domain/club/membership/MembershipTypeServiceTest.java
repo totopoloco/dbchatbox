@@ -20,6 +20,7 @@ import at.mavila.dbchatbox.domain.club.exception.InvalidStatusTransitionExceptio
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.club.training.Session;
 import at.mavila.dbchatbox.domain.club.training.SessionRepository;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 
 @ExtendWith(MockitoExtension.class)
 class MembershipTypeServiceTest {
@@ -29,6 +30,9 @@ class MembershipTypeServiceTest {
 
   @Mock
   private SessionRepository sessionRepository;
+
+  @Mock
+  private CommandValidator commandValidator;
 
   @InjectMocks
   private MembershipTypeService service;

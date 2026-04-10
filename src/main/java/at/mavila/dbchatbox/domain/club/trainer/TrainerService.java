@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -24,6 +25,7 @@ public class TrainerService {
 
   private final TrainerRepository trainerRepository;
   private final TrainerSettingsRepository trainerSettingsRepository;
+  private final CommandValidator commandValidator;
 
   /**
    * Registers a new trainer and creates the initial {@link TrainerSettings} in a single transaction.
@@ -33,6 +35,8 @@ public class TrainerService {
    * @return the created trainer
    */
   public Trainer createTrainer(final CreateTrainerCommand command) {
+    commandValidator.validate(command);
+
     if (trainerRepository.existsByEmail(command.email())) {
       throw new DuplicateEmailException(command.email());
     }

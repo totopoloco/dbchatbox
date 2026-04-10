@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import at.mavila.dbchatbox.domain.club.exception.InvalidOperationException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -29,6 +30,7 @@ public class SessionOccurrenceService {
 
   private final SessionOccurrenceRepository occurrenceRepository;
   private final SessionRepository sessionRepository;
+  private final CommandValidator commandValidator;
 
   /**
    * Bulk-creates session occurrences for a date range, one per matching weekday.
@@ -44,6 +46,8 @@ public class SessionOccurrenceService {
    *                                     if the session does not exist
    */
   public List<SessionOccurrence> createOccurrences(final CreateOccurrencesCommand command) {
+    commandValidator.validate(command);
+
     final Session session = sessionRepository.findById(command.sessionId())
         .orElseThrow(() -> new ResourceNotFoundException("Session", command.sessionId()));
 

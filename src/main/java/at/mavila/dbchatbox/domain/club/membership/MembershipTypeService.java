@@ -14,6 +14,7 @@ import at.mavila.dbchatbox.domain.club.exception.InvalidStatusTransitionExceptio
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.club.training.Session;
 import at.mavila.dbchatbox.domain.club.training.SessionRepository;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -31,6 +32,7 @@ public class MembershipTypeService {
 
   private final MembershipTypeRepository membershipTypeRepository;
   private final SessionRepository sessionRepository;
+  private final CommandValidator commandValidator;
 
   /**
    * Creates a new membership type in DRAFT status.
@@ -42,6 +44,8 @@ public class MembershipTypeService {
    *                                  if the name is already in use
    */
   public MembershipType create(final CreateMembershipTypeCommand command) {
+    commandValidator.validate(command);
+
     if (membershipTypeRepository.existsByName(command.name())) {
       throw new DuplicateNameException("MembershipType", command.name());
     }

@@ -17,6 +17,7 @@ import at.mavila.dbchatbox.domain.club.training.SessionOccurrence;
 import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceRepository;
 import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceStatus;
 import at.mavila.dbchatbox.domain.club.training.SessionType;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -35,6 +36,7 @@ public class TrainerLogService {
   private final TrainerRepository trainerRepository;
   private final TrainerSettingsRepository trainerSettingsRepository;
   private final SessionOccurrenceRepository occurrenceRepository;
+  private final CommandValidator commandValidator;
 
   /**
    * Admin directly logs hours for a trainer (bypasses approval — status set to APPROVED).
@@ -110,7 +112,9 @@ public class TrainerLogService {
     if (log.getStatus() != TrainerLogStatus.REJECTED) {
       throw new InvalidOperationException("Can only resubmit REJECTED entries, current: %s".formatted(log.getStatus()));
     }
-    validateHoursWorked(hoursWorked);
+    if (hoursWorked.compareTo(BigDecimal.ZERO) <= 0 || hoursWorked.compareTo(MAX_HOURS) > 0) {
+      throw new InvalidOperationException("Hours worked must be between 0 (exclusive) and 24 (inclusive)");
+    }
 
     final TrainerSettings settings = findSettings(log.getTrainer().getId());
     final boolean autoApprove = Boolean.TRUE.equals(settings.getAutoApproveHours());
@@ -194,11 +198,12 @@ public class TrainerLogService {
 
   private TrainerLog createLogEntry(final LogTrainerHoursCommand command, final TrainerLogStatus status,
       final LocalDateTime reviewedAt) {
+    commandValidator.validate(command);
+
     final Trainer trainer = findTrainer(command.trainerId());
     final SessionOccurrence occurrence = findOccurrence(command.sessionOccurrenceId());
 
     validateOccurrenceForLogging(occurrence, trainer);
-    validateHoursWorked(command.hoursWorked());
     validateNoDuplicate(command.trainerId(), command.sessionOccurrenceId());
 
     final TrainerLog log = TrainerLog.builder().trainer(trainer).sessionOccurrence(occurrence)
@@ -252,15 +257,6 @@ public class TrainerLogService {
   private boolean isTrainerAssigned(final SessionOccurrence occurrence, final Trainer trainer) {
     return nonNull(occurrence.getSession().getTrainer())
         && occurrence.getSession().getTrainer().getId().equals(trainer.getId());
-  }
-
-  private void validateHoursWorked(final BigDecimal hoursWorked) {
-    if (hoursWorked.compareTo(BigDecimal.ZERO) <= 0) {
-      throw new InvalidOperationException("Hours worked must be positive");
-    }
-    if (hoursWorked.compareTo(MAX_HOURS) > 0) {
-      throw new InvalidOperationException("Hours worked cannot exceed 24");
-    }
   }
 
   private void validateNoDuplicate(final Long trainerId, final Long sessionOccurrenceId) {

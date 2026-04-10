@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 
 @ExtendWith(MockitoExtension.class)
 class TrainerServiceTest {
@@ -26,6 +27,8 @@ class TrainerServiceTest {
   private TrainerRepository trainerRepository;
   @Mock
   private TrainerSettingsRepository trainerSettingsRepository;
+  @Mock
+  private CommandValidator commandValidator;
 
   @InjectMocks
   private TrainerService service;

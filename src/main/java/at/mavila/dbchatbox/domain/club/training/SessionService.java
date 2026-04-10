@@ -15,6 +15,7 @@ import at.mavila.dbchatbox.domain.club.exception.OverlapException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.club.trainer.Trainer;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerRepository;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -29,6 +30,7 @@ public class SessionService {
 
   private final SessionRepository sessionRepository;
   private final TrainerRepository trainerRepository;
+  private final CommandValidator commandValidator;
 
   /**
    * Creates a new recurring session.
@@ -42,8 +44,7 @@ public class SessionService {
    *                                     if trainer or location overlap is detected
    */
   public Session createSession(final CreateSessionCommand command) {
-    validateTimeOrdering(command.startTime(), command.endTime());
-    validateTrainerRequirement(command.sessionType(), command.trainerId());
+    commandValidator.validate(command);
 
     Trainer trainer = null;
     if (nonNull(command.trainerId())) {
@@ -112,21 +113,6 @@ public class SessionService {
         .filter(trainer -> !hasOverlap(sessionRepository.findByTrainerIdAndDayOfWeek(trainer.getId(), dayOfWeek),
             startTime, endTime, null))
         .toList();
-  }
-
-  private void validateTimeOrdering(final LocalTime startTime, final LocalTime endTime) {
-    if (!endTime.isAfter(startTime)) {
-      throw new InvalidOperationException("endTime must be after startTime");
-    }
-  }
-
-  private void validateTrainerRequirement(final SessionType type, final Long trainerId) {
-    if (type == SessionType.TRAINING && isNull(trainerId)) {
-      throw new InvalidOperationException("TRAINING sessions require a trainerId");
-    }
-    if (type == SessionType.FREE_GAME && nonNull(trainerId)) {
-      throw new InvalidOperationException("FREE_GAME sessions must not have a trainerId");
-    }
   }
 
   private void checkOverlap(final List<Session> existing, final LocalTime startTime, final LocalTime endTime,

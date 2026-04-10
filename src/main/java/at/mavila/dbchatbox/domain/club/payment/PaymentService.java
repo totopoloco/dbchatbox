@@ -13,6 +13,7 @@ import at.mavila.dbchatbox.domain.club.exception.InvalidOperationException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionRepository;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -27,6 +28,7 @@ public class PaymentService {
 
   private final PaymentRepository paymentRepository;
   private final MemberSubscriptionRepository subscriptionRepository;
+  private final CommandValidator commandValidator;
 
   /**
    * Records a payment against a subscription.
@@ -40,12 +42,10 @@ public class PaymentService {
    *                                     if the subscription has ended or amount is not positive
    */
   public Payment recordPayment(final RecordPaymentCommand command) {
+    commandValidator.validate(command);
+
     final MemberSubscription subscription = subscriptionRepository.findById(command.memberSubscriptionId())
         .orElseThrow(() -> new ResourceNotFoundException("MemberSubscription", command.memberSubscriptionId()));
-
-    if (command.amount().compareTo(BigDecimal.ZERO) <= 0) {
-      throw new InvalidOperationException("Payment amount must be positive");
-    }
 
     if (subscription.getEndDate().isBefore(LocalDate.now())) {
       throw new InvalidOperationException("Cannot record payment for an ended subscription");

@@ -22,6 +22,7 @@ import at.mavila.dbchatbox.domain.club.member.Status;
 import at.mavila.dbchatbox.domain.club.membership.MembershipType;
 import at.mavila.dbchatbox.domain.club.membership.MembershipTypeRepository;
 import at.mavila.dbchatbox.domain.club.membership.MembershipTypeStatus;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -37,6 +38,7 @@ public class MemberSubscriptionService {
   private final MemberSubscriptionRepository subscriptionRepository;
   private final MemberRepository memberRepository;
   private final MembershipTypeRepository membershipTypeRepository;
+  private final CommandValidator commandValidator;
   private final MemberService memberService;
 
   /**
@@ -55,6 +57,8 @@ public class MemberSubscriptionService {
    *                                     if the membership type is not ACTIVE
    */
   public MemberSubscription subscribeMember(final SubscribeMemberCommand command) {
+    commandValidator.validate(command);
+
     final Member member = memberRepository.findById(command.memberId())
         .orElseThrow(() -> new MemberNotFoundException(command.memberId()));
 

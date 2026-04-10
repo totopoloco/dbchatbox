@@ -3,6 +3,10 @@ package at.mavila.dbchatbox.domain.club.training;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
 /**
  * Command record for creating a recurring session.
  *
@@ -22,6 +26,26 @@ import java.time.LocalTime;
  *                      the trainer ID (required for TRAINING, must be null for FREE_GAME)
  * @since 2026-04-10
  */
-public record CreateSessionCommand(String name, SessionType sessionType, DayOfWeek dayOfWeek, LocalTime startTime,
-    LocalTime endTime, String location, Long trainerId) {
+@ValidTimeRange
+@ValidTrainerAssignment
+public record CreateSessionCommand(
+    @NotBlank(message = "Session name is required") @Size(max = 100, message = "Session name must not exceed 100 characters")
+    String name,
+
+    @NotNull(message = "Session type is required")
+    SessionType sessionType,
+
+    @NotNull(message = "Day of week is required")
+    DayOfWeek dayOfWeek,
+
+    @NotNull(message = "Start time is required")
+    LocalTime startTime,
+
+    @NotNull(message = "End time is required")
+    LocalTime endTime,
+
+    @NotBlank(message = "Location is required")
+    String location,
+
+    Long trainerId) {
 }

@@ -3,6 +3,7 @@ package at.mavila.dbchatbox.domain.club.trainer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -25,6 +26,7 @@ import at.mavila.dbchatbox.domain.club.training.SessionOccurrence;
 import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceRepository;
 import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceStatus;
 import at.mavila.dbchatbox.domain.club.training.SessionType;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 
 @ExtendWith(MockitoExtension.class)
 class TrainerLogServiceTest {
@@ -37,6 +39,8 @@ class TrainerLogServiceTest {
   private TrainerSettingsRepository trainerSettingsRepository;
   @Mock
   private SessionOccurrenceRepository occurrenceRepository;
+  @Mock
+  private CommandValidator commandValidator;
 
   @InjectMocks
   private TrainerLogService service;
@@ -101,11 +105,11 @@ class TrainerLogServiceTest {
 
     @Test
     void shouldRejectZeroHours() {
-      when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
-      when(occurrenceRepository.findById(100L)).thenReturn(Optional.of(occurrence));
+      final LogTrainerHoursCommand command = new LogTrainerHoursCommand(1L, 100L, BigDecimal.ZERO, null);
+      doThrow(new InvalidOperationException("Hours worked must be positive")).when(commandValidator).validate(command);
 
-      assertThatThrownBy(() -> service.logTrainerHours(new LogTrainerHoursCommand(1L, 100L, BigDecimal.ZERO, null)))
-          .isInstanceOf(InvalidOperationException.class).hasMessageContaining("positive");
+      assertThatThrownBy(() -> service.logTrainerHours(command)).isInstanceOf(InvalidOperationException.class)
+          .hasMessageContaining("positive");
     }
   }
 

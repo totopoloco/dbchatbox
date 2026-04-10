@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.MemberDeletedException;
 import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -31,6 +32,7 @@ public class MemberService {
 
   private final MemberRepository memberRepository;
   private final MemberStatusHistoryRepository statusHistoryRepository;
+  private final CommandValidator commandValidator;
 
   /**
    * Registers a new member and creates an initial ACTIVE status entry.
@@ -42,6 +44,8 @@ public class MemberService {
    *                                   if the email is already in use
    */
   public Member createMember(final CreateMemberCommand command) {
+    commandValidator.validate(command);
+
     if (memberRepository.existsByEmail(command.email())) {
       throw new DuplicateEmailException(command.email());
     }

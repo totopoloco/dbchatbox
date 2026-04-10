@@ -23,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.MemberDeletedException;
 import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 
 @ExtendWith(MockitoExtension.class)
 class MemberServiceTest {
@@ -32,6 +33,9 @@ class MemberServiceTest {
 
   @Mock
   private MemberStatusHistoryRepository statusHistoryRepository;
+
+  @Mock
+  private CommandValidator commandValidator;
 
   @InjectMocks
   private MemberService memberService;

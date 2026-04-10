@@ -3,6 +3,7 @@ package at.mavila.dbchatbox.domain.club.training;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 import java.time.DayOfWeek;
@@ -21,6 +22,7 @@ import at.mavila.dbchatbox.domain.club.exception.InvalidOperationException;
 import at.mavila.dbchatbox.domain.club.exception.OverlapException;
 import at.mavila.dbchatbox.domain.club.trainer.Trainer;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerRepository;
+import at.mavila.dbchatbox.domain.support.CommandValidator;
 
 @ExtendWith(MockitoExtension.class)
 class SessionServiceTest {
@@ -29,6 +31,8 @@ class SessionServiceTest {
   private SessionRepository sessionRepository;
   @Mock
   private TrainerRepository trainerRepository;
+  @Mock
+  private CommandValidator commandValidator;
 
   @InjectMocks
   private SessionService sessionService;
@@ -54,23 +58,35 @@ class SessionServiceTest {
 
     @Test
     void shouldRejectTrainingWithoutTrainer() {
-      assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Yoga", SessionType.TRAINING,
-          DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", null)))
-          .isInstanceOf(InvalidOperationException.class).hasMessageContaining("trainerId");
+      final CreateSessionCommand command = new CreateSessionCommand("Yoga", SessionType.TRAINING, DayOfWeek.MONDAY,
+          LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", null);
+      doThrow(new InvalidOperationException("TRAINING sessions require a trainerId")).when(commandValidator)
+          .validate(command);
+
+      assertThatThrownBy(() -> sessionService.createSession(command)).isInstanceOf(InvalidOperationException.class)
+          .hasMessageContaining("trainerId");
     }
 
     @Test
     void shouldRejectFreeGameWithTrainer() {
-      assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Open Play", SessionType.FREE_GAME,
-          DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", 1L)))
-          .isInstanceOf(InvalidOperationException.class).hasMessageContaining("FREE_GAME");
+      final CreateSessionCommand command = new CreateSessionCommand("Open Play", SessionType.FREE_GAME,
+          DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0), "Room A", 1L);
+      doThrow(new InvalidOperationException("FREE_GAME sessions must not have a trainerId")).when(commandValidator)
+          .validate(command);
+
+      assertThatThrownBy(() -> sessionService.createSession(command)).isInstanceOf(InvalidOperationException.class)
+          .hasMessageContaining("FREE_GAME");
     }
 
     @Test
     void shouldRejectInvalidTimeOrdering() {
-      assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Yoga", SessionType.FREE_GAME,
-          DayOfWeek.MONDAY, LocalTime.of(10, 0), LocalTime.of(9, 0), "Room A", null)))
-          .isInstanceOf(InvalidOperationException.class).hasMessageContaining("endTime");
+      final CreateSessionCommand command = new CreateSessionCommand("Yoga", SessionType.FREE_GAME, DayOfWeek.MONDAY,
+          LocalTime.of(10, 0), LocalTime.of(9, 0), "Room A", null);
+      doThrow(new InvalidOperationException("endTime must be after startTime")).when(commandValidator)
+          .validate(command);
+
+      assertThatThrownBy(() -> sessionService.createSession(command)).isInstanceOf(InvalidOperationException.class)
+          .hasMessageContaining("endTime");
     }
 
     @Test
