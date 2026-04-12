@@ -5,6 +5,112 @@
 
 ---
 
+## Table of Contents
+
+1. [Problem Statement](#problem-statement)
+   - [Scope](#scope)
+   - [Primary Key Strategy — TSID](#primary-key-strategy--tsid)
+2. [Domain Model](#domain-model)
+   - [Member](#member)
+   - [Status (Reference Table)](#status-reference-table)
+   - [Unit (Reference Table)](#unit-reference-table)
+   - [MembershipTypeStatus (Reference Table)](#membershiptypestatus-reference-table)
+   - [SessionType (Reference Table)](#sessiontype-reference-table)
+   - [SessionOccurrenceStatus (Reference Table)](#sessionoccurrencestatus-reference-table)
+   - [TrainerLogStatus (Reference Table)](#trainerlogstatus-reference-table)
+   - [TrainerPaymentMode (Reference Table)](#trainerpaymentmode-reference-table)
+   - [SubscriptionPaymentStatus (Reference Table)](#subscriptionpaymentstatus-reference-table)
+   - [MemberStatusHistory (Pivot Table)](#memberstatushistory-pivot-table)
+   - [MemberSubscription](#membersubscription)
+   - [MembershipType](#membershiptype)
+   - [MembershipTypeSession (Join Table)](#membershiptypesession-join-table)
+   - [Payment](#payment)
+   - [PaymentDocument](#paymentdocument)
+   - [Session](#session)
+   - [SessionOccurrence](#sessionoccurrence)
+   - [Trainer](#trainer)
+   - [TrainerSettings](#trainersettings)
+   - [TrainerLog (Training Hours)](#trainerlog-training-hours)
+3. [Entity Relationship Summary](#entity-relationship-summary)
+4. [GraphQL Operations](#graphql-operations)
+   - [Queries](#queries)
+   - [Mutations](#mutations)
+5. [Input / Output Types](#input--output-types)
+   - [MemberStatusEntry](#memberstatusentry-responsehistory-type)
+   - [ChangeMemberStatusInput](#changememberstatusinput)
+   - [CreateMembershipTypeInput](#createmembershiptypeinput)
+   - [SubscribeMemberInput](#subscribememberinput)
+   - [MemberPaymentStatus](#memberpaymentstatus-response-type)
+   - [RecordPaymentInput](#recordpaymentinput)
+   - [UploadPaymentDocumentInput](#uploadpaymentdocumentinput)
+   - [ReviewPaymentDocumentInput](#reviewpaymentdocumentinput)
+   - [OverdueSubscription](#overduesubscription-response-type)
+   - [TrainerHoursSummary](#trainerhouressummary-response-type)
+   - [DeleteMemberResult](#deletememberresult-response-type)
+   - [CreateSessionInput](#createsessioninput)
+   - [CreateSessionOccurrencesInput](#createsessionoccurrencesinput)
+   - [LogTrainerHoursInput](#logtrainerhoursinput)
+   - [SubmitTrainerHoursInput](#submittrainerhoursinput)
+   - [RejectTrainerLogInput](#rejecttrainerloginput)
+   - [ResubmitTrainerLogInput](#resubmittrainerloginput)
+   - [CreateTrainerInput](#createtrainerinput)
+   - [UpdateTrainerInput](#updatetrainerinput)
+   - [UpdateTrainerSettingsInput](#updatetrainersettingsinput)
+   - [TrainerPaymentSummary](#trainerpayoursummary-response-type)
+6. [Authorization & Roles](#authorization--roles)
+   - [Operation Access Matrix](#operation-access-matrix)
+   - [Authorization Rules](#authorization-rules)
+7. [Rules & Edge Cases](#rules--edge-cases)
+   - [Members](#members) (1–5)
+   - [Status](#status) (6–7)
+   - [Subscriptions](#subscriptions) (8–13)
+   - [Payments](#payments) (14–16)
+   - [Payment Verification & Grace Period](#payment-verification--grace-period) (17–23)
+   - [Prorated Pricing](#prorated-pricing) (24–28)
+   - [Membership Types](#membership-types) (29–32)
+   - [Sessions](#sessions) (33–37)
+   - [Session Occurrences](#session-occurrences) (38–45)
+   - [Trainers](#trainers) (46–49)
+   - [Trainer Hour Submissions & Approval](#trainer-hour-submissions--approval) (50–58)
+   - [GDPR — Right to Erasure](#gdpr--right-to-erasure-art-17-dsgvo) (59–68)
+   - [Notifications](#notifications) (69–74)
+   - [Configuration Properties](#configuration-properties)
+8. [Examples](#examples)
+   - [Example 1 — Register a new member](#example-1--register-a-new-member)
+   - [Example 2 — Subscribe a member to a membership type](#example-2--subscribe-a-member-to-a-membership-type)
+   - [Example 3 — Subscribe mid-season with prorated price](#example-3--subscribe-mid-season-with-prorated-price)
+   - [Example 4 — Query a member with subscriptions and status](#example-4--query-a-member-with-subscriptions-and-status)
+   - [Example 5 — Query outstanding payments](#example-5--query-outstanding-payments-per-subscription)
+   - [Example 6 — Change member status with reason](#example-6--change-member-status-with-reason)
+   - [Example 7 — Create training and free game sessions](#example-7--create-a-training-session-and-a-free-game-session)
+   - [Example 8 — Bulk-create session occurrences](#example-8--bulk-create-session-occurrences-for-a-season)
+   - [Example 9 — Log trainer hours (admin direct)](#example-9--log-trainer-hours-against-a-completed-occurrence-admin-direct)
+   - [Example 10 — Member views available sessions](#example-10--member-views-their-available-sessions)
+   - [Example 11 — Next session reminder](#example-11--next-session-reminder)
+   - [Example 12 — Validation error: duplicate email](#example-12--validation-error-duplicate-email)
+   - [Example 13 — GDPR erasure](#example-13--gdpr-erasure-delete-a-member)
+   - [Example 14 — Free Game membership (end-to-end)](#example-14--admin-workflow-create-a-free-game-membership-type-end-to-end)
+   - [Example 15 — Training membership with trainer](#example-15--admin-workflow-create-a-training-membership-type-with-trainer-selection)
+   - [Example 16 — Trainer submits hours (manual approval)](#example-16--trainer-submits-hours-manual-approval-workflow)
+   - [Example 17 — Trainer submits hours (auto-approval)](#example-17--trainer-submits-hours-auto-approval)
+   - [Example 18 — Admin rejects hours, trainer resubmits](#example-18--admin-rejects-hours-trainer-resubmits)
+   - [Example 19 — Trainer views payment summary](#example-19--trainer-views-their-payment-summary)
+   - [Example 20 — Full season workflow: Badminton club](#example-20--full-season-workflow-badminton-club-anna-john-lucas)
+9. [Complexity Targets](#complexity-targets)
+10. [Architecture Notes](#architecture-notes)
+    - [Build Dependencies](#build-dependencies)
+    - [Primary Key Library — TSID](#primary-key-library--tsid)
+    - [GraphQL Configuration](#graphql-configuration)
+    - [Domain packages](#domain-packages-following-project-ddd-conventions)
+    - [Database Migrations — Flyway](#database-migrations--flyway)
+    - [Data Access Layer — JPA Repositories](#data-access-layer--jpa-repositories)
+    - [Service Layer Design](#service-layer-design--avoid-monolithic-services)
+    - [GDPR Compliance](#gdpr-compliance)
+    - [Future Phases](#future-phases-out-of-scope)
+    - [Enum Storage Pattern](#enum-storage-pattern)
+
+---
+
 ## Problem Statement
 
 An Austrian sports club (_Verein_) is a permanent association of persons organized under statutes with
@@ -22,15 +128,16 @@ spreadsheets, payment tracking on paper, training schedules via WhatsApp.
 
 ### Scope
 
-Phase 1 covers **five core domains**:
+Phase 1 covers **six core domains**:
 
-| Domain         | Responsibility                                                                                        |
-| -------------- | ----------------------------------------------------------------------------------------------------- |
-| **Member**     | Registration, contact details, status tracking                                                        |
-| **Membership** | Membership types, pricing, duration, linked sessions                                                  |
-| **Payment**    | Recording payments linked to member and membership type                                               |
-| **Session**    | Scheduled sessions (training, free games, etc.), occurrences, calendar, availability                  |
-| **Trainer**    | Hour submission, approval workflow, payment tracking (hourly rate, per-session or monthly settlement) |
+| Domain           | Responsibility                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------- |
+| **Member**       | Registration, contact details, status tracking                                                        |
+| **Membership**   | Membership types, pricing, duration, linked sessions                                                  |
+| **Payment**      | Recording payments, payment-document upload & verification, grace-period tracking                     |
+| **Session**      | Scheduled sessions (training, free games, etc.), occurrences, calendar, availability                  |
+| **Trainer**      | Hour submission, approval workflow, payment tracking (hourly rate, per-session or monthly settlement) |
+| **Notification** | Admin alerts for overdue payments and payment reviews; member payment reminders and membership emails |
 
 Professional players (e.g. Bundesliga-level athletes) are treated as regular members in Phase 1.
 A future phase may introduce dedicated player/team management with tournaments, statistics, and contracts.
@@ -65,15 +172,16 @@ In GraphQL, TSID IDs are exposed as `ID` scalar (serialized as `String`).
 
 Represents a **person's membership in the club** — their identity, contact details, and when they joined. This is the long-lived club-level relationship. What a member _participates in_ (amateurs, children, professional, etc.) is modeled separately via `MemberSubscription`.
 
-| Field         | Type        | Constraints                                       |
-| ------------- | ----------- | ------------------------------------------------- |
-| `id`          | `Long`      | TSID, auto-generated, unique                      |
-| `firstName`   | `String`    | Not null, not blank, max 100 characters           |
-| `lastName`    | `String`    | Not null, not blank, max 100 characters           |
-| `email`       | `String`    | Not null, valid email format, unique              |
-| `phoneNumber` | `String`    | Optional, E.164 format recommended                |
-| `memberSince` | `LocalDate` | Not null, must not be in the future               |
-| `memberUntil` | `LocalDate` | Optional; if present, must be after `memberSince` |
+| Field         | Type        | Constraints                                                |
+| ------------- | ----------- | ---------------------------------------------------------- |
+| `id`          | `Long`      | TSID, auto-generated, unique                               |
+| `firstName`   | `String`    | Not null, not blank, max 100 characters                    |
+| `lastName`    | `String`    | Not null, not blank, max 100 characters                    |
+| `email`       | `String`    | Not null, valid email format, unique                       |
+| `phoneNumber` | `String`    | Optional, E.164 format recommended                         |
+| `memberSince` | `LocalDate` | Not null, must not be in the future                        |
+| `memberUntil` | `LocalDate` | Optional; if present, must be after `memberSince`          |
+| `version`     | `Short`     | Not null, managed by JPA `@Version` for optimistic locking |
 
 **Note:** Status is **not** stored directly on the Member entity. See `Status` and `MemberStatusHistory` below. Membership types are **not** stored directly on the Member entity — see `MemberSubscription`.
 
@@ -82,7 +190,7 @@ Represents a **person's membership in the club** — their identity, contact det
 - A member whose `memberUntil` date is in the past should be considered expired — queries must account for this.
 - Email must be unique across all members (excluding anonymized `DELETED` records).
 - **Soft-delete** (standard deactivation): record a status transition to `INACTIVE`. Does not remove personal data.
-- **GDPR erasure** (right to be forgotten, Art. 17 DSGVO): a two-phase process. Phase 1 (immediate): the `deleteMember` mutation anonymizes all personal data in-place and sets status to `DELETED`. The row is preserved to maintain referential integrity. Phase 2 (deferred): a scheduled purge job hard-deletes anonymized member rows after a configurable retention period (default 30 days). See GDPR rules 52–61 below.
+- **GDPR erasure** (right to be forgotten, Art. 17 DSGVO): a two-phase process. Phase 1 (immediate): the `deleteMember` mutation anonymizes all personal data in-place and sets status to `DELETED`. The row is preserved to maintain referential integrity. Phase 2 (deferred): a scheduled purge job hard-deletes anonymized member rows after a configurable retention period (default 30 days). See GDPR rules 59-68 below.
 - A member can hold **zero, one, or many** active subscriptions simultaneously (e.g. amateur training + children coaching).
 
 ### Status (Reference Table)
@@ -240,17 +348,43 @@ A lookup table of how trainers are compensated. Values are modeled as a **Java e
 
 Additional payment modes can be added in the future without schema changes.
 
+### SubscriptionPaymentStatus (Reference Table)
+
+A lookup table of payment-verification statuses for member subscriptions. Tracks whether a member has paid for a given subscription period. Values are modeled as a **Java enum** (`SubscriptionPaymentStatus`) in the domain layer and stored as `String` (`VARCHAR`) in the database using `@Enumerated(EnumType.STRING)`.
+
+| Field  | Type     | Constraints                                    |
+| ------ | -------- | ---------------------------------------------- |
+| `id`   | `Long`   | TSID, auto-generated, unique                   |
+| `name` | `String` | Not null, not blank, unique, max 50 characters |
+
+**Seed data:**
+
+| `name`      | Description                                                                                    |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| `NOT_PAID`  | Default — no payment document has been uploaded. Member owes the full `agreedPrice`            |
+| `IN_REVIEW` | Member has uploaded a payment document (bank-issued PDF). Awaiting admin verification          |
+| `REVIEWED`  | Admin has verified the payment document and confirmed payment. Subscription is considered paid |
+
+Additional statuses can be added in the future without schema changes.
+
+**Transitions:**
+
+- `NOT_PAID → IN_REVIEW` — member uploads a payment document (bank-slip PDF).
+- `IN_REVIEW → REVIEWED` — admin verifies the document and confirms payment.
+- `IN_REVIEW → NOT_PAID` — admin rejects the document (e.g. invalid, unreadable, wrong amount). Member must re-upload.
+
 ### MemberStatusHistory (Pivot Table)
 
 Tracks every status transition for a member, providing a full audit trail.
 
-| Field       | Type            | Constraints                             |
-| ----------- | --------------- | --------------------------------------- |
-| `id`        | `Long`          | TSID, auto-generated, unique            |
-| `memberId`  | `Long`          | Not null, references Member             |
-| `statusId`  | `Long`          | Not null, references Status             |
-| `changedAt` | `LocalDateTime` | Not null, defaults to current timestamp |
-| `reason`    | `String`        | Optional, max 500 characters            |
+| Field       | Type            | Constraints                                                |
+| ----------- | --------------- | ---------------------------------------------------------- |
+| `id`        | `Long`          | TSID, auto-generated, unique                               |
+| `memberId`  | `Long`          | Not null, references Member                                |
+| `statusId`  | `Long`          | Not null, references Status                                |
+| `changedAt` | `LocalDateTime` | Not null, defaults to current timestamp                    |
+| `reason`    | `String`        | Optional, max 500 characters                               |
+| `version`   | `Short`         | Not null, managed by JPA `@Version` for optimistic locking |
 
 **Business rules:**
 
@@ -271,6 +405,8 @@ Links a member to a membership type for a **specific period**. One subscription 
 | `startDate`        | `LocalDate`  | Not null, when this subscription period begins                                                                                              |
 | `endDate`          | `LocalDate`  | Not null, when this subscription period ends; must be after `startDate`. Defaults to `startDate + duration` (in the membership type's unit) |
 | `agreedPrice`      | `BigDecimal` | Not null; the locked-in price for this subscription period, always populated at creation (see business rules below)                         |
+| `paymentStatusId`  | `Long`       | Not null, references SubscriptionPaymentStatus, default `NOT_PAID` — tracks payment verification state for this subscription                |
+| `version`          | `Short`      | Not null, managed by JPA `@Version` for optimistic locking                                                                                  |
 
 **Derived state:** A subscription is considered **active** when `endDate >= today`. No separate boolean needed.
 
@@ -283,6 +419,8 @@ Links a member to a membership type for a **specific period**. One subscription 
 - **Outstanding dues** for a subscription = `agreedPrice` − sum of all payments linked to that subscription.
 - **Price resolution at creation**: `agreedPrice` is always populated when a subscription is created. The system resolves it in priority order: (1) explicit value provided by the admin, (2) auto-calculated prorated price if the membership type has `proratedMode = true`, (3) the membership type’s current `price`. Once stored, `agreedPrice` is immutable — it captures the price agreed at subscription time and is not affected by future changes to the membership type’s `price`.
 - **Prorated pricing**: When a member joins mid-period (e.g. season starts November but member subscribes in March), the administrator can provide an explicit `agreedPrice` to a reduced amount. Alternatively, if the membership type has `proratedMode = true`, the system auto-calculates the prorated price (see MembershipType rules).
+- **Payment verification workflow**: When a subscription is created, `paymentStatus` is set to `NOT_PAID`. The member has until `startDate + gracePeriodDays` (from the membership type) to upload a payment document. Once uploaded, the status transitions to `IN_REVIEW`. The admin reviews the document and either confirms (`REVIEWED`) or rejects (`NOT_PAID`). See `PaymentDocument` entity and notification rules below.
+- **Grace period**: The member is expected to pay within `gracePeriodDays` (defined on the membership type, default 30) of the subscription's `startDate`. After this period, the subscription is considered **overdue** and the system generates admin notifications and member reminders. The formula: a subscription is overdue when `today > startDate + gracePeriodDays` and `paymentStatus ≠ REVIEWED`.
 - Examples:
   - _Anna joined the club in 2010 with a "Free Games" subscription (€120/year) — she plays casual matches on weekends. In 2024 she decided she needed proper training, so she added a "Training" subscription (€360/year). She now pays €120 + €360 = €480/year across 2 subscriptions._
   - _The Training season runs November–October (€400, duration=1 YEARS). Karl joins in March. The admin creates a subscription with `startDate=2026-03-01`, `endDate=2026-10-31`, `agreedPrice=267.00`. Next season, a new subscription is created with the full €400._
@@ -290,16 +428,18 @@ Links a member to a membership type for a **specific period**. One subscription 
 
 ### MembershipType
 
-| Field          | Type         | Constraints                                                                  |
-| -------------- | ------------ | ---------------------------------------------------------------------------- |
-| `id`           | `Long`       | TSID, auto-generated, unique                                                 |
-| `name`         | `String`     | Not null, not blank, unique, max 100 characters                              |
-| `description`  | `String`     | Optional, max 500 characters                                                 |
-| `price`        | `BigDecimal` | Not null, positive (> 0)                                                     |
-| `duration`     | `Integer`    | Not null, positive — number of time units for the period                     |
-| `unitId`       | `Long`       | Not null, references Unit — the time unit for `duration`                     |
-| `statusId`     | `Long`       | Not null, references MembershipTypeStatus                                    |
-| `proratedMode` | `Boolean`    | Not null, default `false` — enables automatic proration for mid-period joins |
+| Field             | Type         | Constraints                                                                                                       |
+| ----------------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `id`              | `Long`       | TSID, auto-generated, unique                                                                                      |
+| `name`            | `String`     | Not null, not blank, unique, max 100 characters                                                                   |
+| `description`     | `String`     | Optional, max 500 characters                                                                                      |
+| `price`           | `BigDecimal` | Not null, positive (> 0)                                                                                          |
+| `duration`        | `Integer`    | Not null, positive — number of time units for the period                                                          |
+| `unitId`          | `Long`       | Not null, references Unit — the time unit for `duration`                                                          |
+| `statusId`        | `Long`       | Not null, references MembershipTypeStatus                                                                         |
+| `proratedMode`    | `Boolean`    | Not null, default `false` — enables automatic proration for mid-period joins                                      |
+| `gracePeriodDays` | `Integer`    | Not null, positive, default `30` — number of days after subscription start within which payment must be completed |
+| `version`         | `Short`      | Not null, managed by JPA `@Version` for optimistic locking                                                        |
 
 **Business rules:**
 
@@ -331,20 +471,47 @@ Links which sessions are included in a membership type. A membership type can gr
 
 ### Payment
 
-| Field                  | Type         | Constraints                               |
-| ---------------------- | ------------ | ----------------------------------------- |
-| `id`                   | `Long`       | TSID, auto-generated, unique              |
-| `memberSubscriptionId` | `Long`       | Not null, references a MemberSubscription |
-| `amount`               | `BigDecimal` | Not null, positive (> 0)                  |
-| `currency`             | `String`     | Not null, ISO 4217, default `EUR`         |
-| `paymentDate`          | `LocalDate`  | Not null                                  |
-| `notes`                | `String`     | Optional, max 500 characters              |
+| Field                  | Type         | Constraints                                                |
+| ---------------------- | ------------ | ---------------------------------------------------------- |
+| `id`                   | `Long`       | TSID, auto-generated, unique                               |
+| `memberSubscriptionId` | `Long`       | Not null, references a MemberSubscription                  |
+| `amount`               | `BigDecimal` | Not null, positive (> 0)                                   |
+| `currency`             | `String`     | Not null, ISO 4217, default `EUR`                          |
+| `paymentDate`          | `LocalDate`  | Not null                                                   |
+| `notes`                | `String`     | Optional, max 500 characters                               |
+| `version`              | `Short`      | Not null, managed by JPA `@Version` for optimistic locking |
 
 **Business rules:**
 
 - A payment is linked to a **MemberSubscription**, which already captures the member and the membership type. No need to duplicate those foreign keys.
 - A subscription can have multiple payments (e.g. partial payments).
 - Outstanding dues per subscription = `agreedPrice` − sum of all payments.
+
+### PaymentDocument
+
+Stores a **payment proof document** (bank-issued PDF) uploaded by a member for a specific subscription. The document serves as evidence of payment and triggers the admin verification workflow.
+
+| Field                  | Type            | Constraints                                                  |
+| ---------------------- | --------------- | ------------------------------------------------------------ |
+| `id`                   | `Long`          | TSID, auto-generated, unique                                 |
+| `memberSubscriptionId` | `Long`          | Not null, references MemberSubscription                      |
+| `fileName`             | `String`        | Not null, not blank, max 255 characters — original file name |
+| `contentType`          | `String`        | Not null, must be `application/pdf`                          |
+| `storagePath`          | `String`        | Not null, not blank — path/key to the stored file            |
+| `fileSize`             | `Long`          | Not null, positive — file size in bytes                      |
+| `uploadedAt`           | `LocalDateTime` | Not null, defaults to current timestamp                      |
+| `notes`                | `String`        | Optional, max 500 characters                                 |
+| `version`              | `Short`         | Not null, managed by JPA `@Version` for optimistic locking   |
+
+**Business rules:**
+
+- Only PDF files are accepted (`contentType` must be `application/pdf`).
+- A subscription can have multiple payment documents (e.g. if the first was rejected and the member re-uploads).
+- Uploading a document transitions the subscription's `paymentStatus` from `NOT_PAID` to `IN_REVIEW`.
+- The actual file is stored outside the database (filesystem or object storage). The `storagePath` field holds the reference.
+- Maximum file size is configurable (application property `app.payment.max-document-size`, default 10 MB).
+- Members can only upload documents for their own subscriptions.
+- When the admin rejects a payment document (transitions subscription back to `NOT_PAID`), the member can upload a new document.
 
 ### Session
 
@@ -360,6 +527,7 @@ Represents a **recurring weekly schedule slot** for any club activity — traini
 | `endTime`       | `LocalTime` | Not null, must be after `startTime`                                        |
 | `location`      | `String`    | Not null, not blank, max 200 characters                                    |
 | `trainerId`     | `Long`      | Conditional: **required** for `TRAINING`, **must be null** for `FREE_GAME` |
+| `version`       | `Short`     | Not null, managed by JPA `@Version` for optimistic locking                 |
 
 **Business rules:**
 
@@ -380,13 +548,14 @@ A **concrete, date-specific instance** of a `Session`. While `Session` defines t
 - Logging trainer hours against a specific occurrence.
 - Showing members their upcoming schedule and next session reminder.
 
-| Field       | Type        | Constraints                                  |
-| ----------- | ----------- | -------------------------------------------- |
-| `id`        | `Long`      | TSID, auto-generated, unique                 |
-| `sessionId` | `Long`      | Not null, references Session                 |
-| `date`      | `LocalDate` | Not null                                     |
-| `statusId`  | `Long`      | Not null, references SessionOccurrenceStatus |
-| `notes`     | `String`    | Optional, max 500 characters                 |
+| Field       | Type        | Constraints                                                |
+| ----------- | ----------- | ---------------------------------------------------------- |
+| `id`        | `Long`      | TSID, auto-generated, unique                               |
+| `sessionId` | `Long`      | Not null, references Session                               |
+| `date`      | `LocalDate` | Not null                                                   |
+| `statusId`  | `Long`      | Not null, references SessionOccurrenceStatus               |
+| `notes`     | `String`    | Optional, max 500 characters                               |
+| `version`   | `Short`     | Not null, managed by JPA `@Version` for optimistic locking |
 
 **Business rules:**
 
@@ -405,13 +574,14 @@ A **concrete, date-specific instance** of a `Session`. While `Session` defines t
 
 Represents the **identity and contact details** of a trainer — who they are. Compensation and workflow settings are stored separately in `TrainerSettings` (see below).
 
-| Field         | Type     | Constraints                             |
-| ------------- | -------- | --------------------------------------- |
-| `id`          | `Long`   | TSID, auto-generated, unique            |
-| `firstName`   | `String` | Not null, not blank, max 100 characters |
-| `lastName`    | `String` | Not null, not blank, max 100 characters |
-| `email`       | `String` | Not null, valid email format, unique    |
-| `phoneNumber` | `String` | Optional                                |
+| Field         | Type     | Constraints                                                |
+| ------------- | -------- | ---------------------------------------------------------- |
+| `id`          | `Long`   | TSID, auto-generated, unique                               |
+| `firstName`   | `String` | Not null, not blank, max 100 characters                    |
+| `lastName`    | `String` | Not null, not blank, max 100 characters                    |
+| `email`       | `String` | Not null, valid email format, unique                       |
+| `phoneNumber` | `String` | Optional                                                   |
+| `version`     | `Short`  | Not null, managed by JPA `@Version` for optimistic locking |
 
 **Note:** Compensation fields (`hourlyRate`, `paymentMode`, `autoApproveHours`) are **not** stored on the Trainer entity. See `TrainerSettings` below.
 
@@ -432,6 +602,7 @@ Stores **compensation and workflow configuration** for a trainer — how they ar
 | `hourlyRate`       | `BigDecimal` | Not null, positive (> 0) — the trainer's rate per hour of work                         |
 | `paymentModeId`    | `Long`       | Not null, references TrainerPaymentMode — how the trainer is compensated               |
 | `autoApproveHours` | `Boolean`    | Not null, default `false` — if `true`, submitted hours are auto-approved by the system |
+| `version`          | `Short`      | Not null, managed by JPA `@Version` for optimistic locking                             |
 
 **Business rules:**
 
@@ -457,6 +628,7 @@ Stores **compensation and workflow configuration** for a trainer — how they ar
 | `reviewedAt`          | `LocalDateTime` | Optional — when the admin approved or rejected (null while `PENDING`)   |
 | `rejectionReason`     | `String`        | Optional, max 500 characters — reason provided by admin when rejecting  |
 | `notes`               | `String`        | Optional, max 500 characters                                            |
+| `version`             | `Short`         | Not null, managed by JPA `@Version` for optimistic locking              |
 
 **Business rules:**
 
@@ -478,23 +650,25 @@ Member
   ├── MemberStatusHistory ── Status
   │
   └── MemberSubscription ──── MembershipType ── Unit
-       │                          │            │
-       │                          │         MembershipTypeStatus
-       │                   MembershipTypeSession ── Session ── SessionType
-       │                                               │
-       │                                               ├── SessionOccurrence ── SessionOccurrenceStatus
-       │                                               │        │
-       └── Payment                                     │   TrainerLog ── TrainerLogStatus
-                                                       │
-                                                    Trainer
-                                                       │
-                                                  TrainerSettings ── TrainerPaymentMode
+       │         │                │            │
+       │         │                │         MembershipTypeStatus
+       │         │         MembershipTypeSession ── Session ── SessionType
+       │         │                                     │
+       │         │                                     ├── SessionOccurrence ── SessionOccurrenceStatus
+       │         │                                     │        │
+       │         ├── Payment                           │   TrainerLog ── TrainerLogStatus
+       │         │                                     │
+       │         ├── PaymentDocument                Trainer
+       │         │                                     │
+       │         └── SubscriptionPaymentStatus    TrainerSettings ── TrainerPaymentMode
 ```
 
 **Key relationships:**
 
 - `Member` 1──N `MemberSubscription` N──1 `MembershipType` (a member can hold many subscriptions)
 - `MemberSubscription` 1──N `Payment` (payments are per subscription)
+- `MemberSubscription` 1──N `PaymentDocument` (payment proof documents per subscription)
+- `MemberSubscription` N──1 `SubscriptionPaymentStatus` (NOT_PAID, IN_REVIEW, REVIEWED)
 - `MembershipType` M──N `Session` (via `MembershipTypeSession` join table)
 - `MembershipType` N──1 `Unit` (each membership type has one time unit)
 - `MembershipType` N──1 `MembershipTypeStatus` (each membership type has one lifecycle status)
@@ -534,34 +708,39 @@ Member
 | `trainerHours`            | `trainerId: ID!, from: Date, to: Date`                 | `TrainerHoursSummary`   | Total **approved** hours worked by a trainer in a date range                                  |
 | `pendingTrainerLogs`      | `trainerId: ID`                                        | `[TrainerLog]`          | Pending hour submissions; admin sees all or filters by trainer; trainer sees only own         |
 | `myTrainerPaymentSummary` | `from: Date!, to: Date!`                               | `TrainerPaymentSummary` | Approved hours × hourly rate for the authenticated trainer in a date range                    |
+| `overdueSubscriptions`    | —                                                      | `[OverdueSubscription]` | Subscriptions past their grace period with `paymentStatus ≠ REVIEWED` (admin-only)            |
+| `pendingPaymentReviews`   | —                                                      | `[MemberSubscription]`  | Subscriptions with `paymentStatus = IN_REVIEW` — documents awaiting admin verification        |
+| `paymentDocuments`        | `memberSubscriptionId: ID!`                            | `[PaymentDocument]`     | List all payment documents for a subscription                                                 |
 
 ### Mutations
 
-| Mutation                      | Input                                         | Returns               | Description                                                                   |
-| ----------------------------- | --------------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
-| `createMember`                | `CreateMemberInput!`                          | `Member`              | Register a new member (auto-creates ACTIVE status)                            |
-| `updateMember`                | `id: ID!, UpdateMemberInput!`                 | `Member`              | Update member details                                                         |
-| `changeMemberStatus`          | `ChangeMemberStatusInput!`                    | `MemberStatusEntry`   | Record a status transition with optional reason                               |
-| `deleteMember`                | `id: ID!`                                     | `DeleteMemberResult`  | GDPR erasure: anonymize personal data, end subscriptions                      |
-| `subscribeMember`             | `SubscribeMemberInput!`                       | `MemberSubscription`  | Subscribe a member to a membership type                                       |
-| `endSubscription`             | `id: ID!`                                     | `MemberSubscription`  | Early termination (sets `endDate` to today if still in the future)            |
-| `createMembershipType`        | `CreateMembershipTypeInput!`                  | `MembershipType`      | Define a new membership type (starts as `DRAFT`)                              |
-| `changeMembershipTypeStatus`  | `id: ID!, status: String!`                    | `MembershipType`      | Transition membership type status (e.g. DRAFT → ACTIVE)                       |
-| `assignSessionToMembership`   | `membershipTypeId: ID!, sessionId: ID!`       | `MembershipType`      | Link a session to a membership type                                           |
-| `removeSessionFromMembership` | `membershipTypeId: ID!, sessionId: ID!`       | `MembershipType`      | Unlink a session from a membership type                                       |
-| `recordPayment`               | `RecordPaymentInput!`                         | `Payment`             | Record a payment for a subscription                                           |
-| `createSession`               | `CreateSessionInput!`                         | `Session`             | Create a recurring session (training or free game)                            |
-| `createSessionOccurrences`    | `CreateSessionOccurrencesInput!`              | `[SessionOccurrence]` | Bulk-create occurrences for a session over a date range (calendar scheduling) |
-| `cancelSessionOccurrence`     | `id: ID!`                                     | `SessionOccurrence`   | Cancel a specific occurrence (sets status to `CANCELLED`)                     |
-| `completeSessionOccurrence`   | `id: ID!`                                     | `SessionOccurrence`   | Mark a specific occurrence as completed (sets status to `COMPLETED`)          |
-| `createTrainer`               | `CreateTrainerInput!`                         | `Trainer`             | Register a new trainer (also creates initial `TrainerSettings`)               |
-| `updateTrainer`               | `id: ID!, UpdateTrainerInput!`                | `Trainer`             | Update trainer contact details (name, email, phone)                           |
-| `updateTrainerSettings`       | `trainerId: ID!, UpdateTrainerSettingsInput!` | `TrainerSettings`     | Update trainer compensation and workflow settings (admin-only)                |
-| `logTrainerHours`             | `LogTrainerHoursInput!`                       | `TrainerLog`          | Admin directly logs hours (status set to `APPROVED`, bypasses approval flow)  |
-| `submitTrainerHours`          | `SubmitTrainerHoursInput!`                    | `TrainerLog`          | Trainer submits hours (status `PENDING` or auto-approved per trainer setting) |
-| `approveTrainerLog`           | `id: ID!`                                     | `TrainerLog`          | Approve a pending trainer log entry (sets status to `APPROVED`)               |
-| `rejectTrainerLog`            | `RejectTrainerLogInput!`                      | `TrainerLog`          | Reject a pending trainer log entry with a reason                              |
-| `resubmitTrainerLog`          | `ResubmitTrainerLogInput!`                    | `TrainerLog`          | Resubmit corrected hours after rejection (resets to `PENDING`)                |
+| Mutation                      | Input                                         | Returns               | Description                                                                         |
+| ----------------------------- | --------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------- |
+| `createMember`                | `CreateMemberInput!`                          | `Member`              | Register a new member (auto-creates ACTIVE status)                                  |
+| `updateMember`                | `id: ID!, UpdateMemberInput!`                 | `Member`              | Update member details                                                               |
+| `changeMemberStatus`          | `ChangeMemberStatusInput!`                    | `MemberStatusEntry`   | Record a status transition with optional reason                                     |
+| `deleteMember`                | `id: ID!`                                     | `DeleteMemberResult`  | GDPR erasure: anonymize personal data, end subscriptions                            |
+| `subscribeMember`             | `SubscribeMemberInput!`                       | `MemberSubscription`  | Subscribe a member to a membership type                                             |
+| `endSubscription`             | `id: ID!`                                     | `MemberSubscription`  | Early termination (sets `endDate` to today if still in the future)                  |
+| `createMembershipType`        | `CreateMembershipTypeInput!`                  | `MembershipType`      | Define a new membership type (starts as `DRAFT`)                                    |
+| `changeMembershipTypeStatus`  | `id: ID!, status: String!`                    | `MembershipType`      | Transition membership type status (e.g. DRAFT → ACTIVE)                             |
+| `assignSessionToMembership`   | `membershipTypeId: ID!, sessionId: ID!`       | `MembershipType`      | Link a session to a membership type                                                 |
+| `removeSessionFromMembership` | `membershipTypeId: ID!, sessionId: ID!`       | `MembershipType`      | Unlink a session from a membership type                                             |
+| `recordPayment`               | `RecordPaymentInput!`                         | `Payment`             | Record a payment for a subscription                                                 |
+| `createSession`               | `CreateSessionInput!`                         | `Session`             | Create a recurring session (training or free game)                                  |
+| `createSessionOccurrences`    | `CreateSessionOccurrencesInput!`              | `[SessionOccurrence]` | Bulk-create occurrences for a session over a date range (calendar scheduling)       |
+| `cancelSessionOccurrence`     | `id: ID!`                                     | `SessionOccurrence`   | Cancel a specific occurrence (sets status to `CANCELLED`)                           |
+| `completeSessionOccurrence`   | `id: ID!`                                     | `SessionOccurrence`   | Mark a specific occurrence as completed (sets status to `COMPLETED`)                |
+| `createTrainer`               | `CreateTrainerInput!`                         | `Trainer`             | Register a new trainer (also creates initial `TrainerSettings`)                     |
+| `updateTrainer`               | `id: ID!, UpdateTrainerInput!`                | `Trainer`             | Update trainer contact details (name, email, phone)                                 |
+| `updateTrainerSettings`       | `trainerId: ID!, UpdateTrainerSettingsInput!` | `TrainerSettings`     | Update trainer compensation and workflow settings (admin-only)                      |
+| `logTrainerHours`             | `LogTrainerHoursInput!`                       | `TrainerLog`          | Admin directly logs hours (status set to `APPROVED`, bypasses approval flow)        |
+| `submitTrainerHours`          | `SubmitTrainerHoursInput!`                    | `TrainerLog`          | Trainer submits hours (status `PENDING` or auto-approved per trainer setting)       |
+| `approveTrainerLog`           | `id: ID!`                                     | `TrainerLog`          | Approve a pending trainer log entry (sets status to `APPROVED`)                     |
+| `rejectTrainerLog`            | `RejectTrainerLogInput!`                      | `TrainerLog`          | Reject a pending trainer log entry with a reason                                    |
+| `resubmitTrainerLog`          | `ResubmitTrainerLogInput!`                    | `TrainerLog`          | Resubmit corrected hours after rejection (resets to `PENDING`)                      |
+| `uploadPaymentDocument`       | `UploadPaymentDocumentInput!`                 | `PaymentDocument`     | Member uploads a payment proof PDF for a subscription (`NOT_PAID → IN_REVIEW`)      |
+| `reviewPaymentDocument`       | `ReviewPaymentDocumentInput!`                 | `MemberSubscription`  | Admin verifies or rejects a payment document (`IN_REVIEW → REVIEWED` or `NOT_PAID`) |
 
 ---
 
@@ -586,14 +765,15 @@ Member
 
 ### CreateMembershipTypeInput
 
-| Field          | Type          | Constraints                                                                      |
-| -------------- | ------------- | -------------------------------------------------------------------------------- |
-| `name`         | `String!`     | Not null, not blank, unique, max 100 characters                                  |
-| `description`  | `String`      | Optional, max 500 characters                                                     |
-| `price`        | `BigDecimal!` | Not null, positive (> 0)                                                         |
-| `duration`     | `Integer!`    | Not null, positive — number of time units for the period                         |
-| `unit`         | `String!`     | Not null, must match an existing Unit name (e.g. `DAYS`, `MONTHS`, `YEARS`)      |
-| `proratedMode` | `Boolean`     | Optional, defaults to `false` — enables automatic proration for mid-period joins |
+| Field             | Type          | Constraints                                                                      |
+| ----------------- | ------------- | -------------------------------------------------------------------------------- |
+| `name`            | `String!`     | Not null, not blank, unique, max 100 characters                                  |
+| `description`     | `String`      | Optional, max 500 characters                                                     |
+| `price`           | `BigDecimal!` | Not null, positive (> 0)                                                         |
+| `duration`        | `Integer!`    | Not null, positive — number of time units for the period                         |
+| `unit`            | `String!`     | Not null, must match an existing Unit name (e.g. `DAYS`, `MONTHS`, `YEARS`)      |
+| `proratedMode`    | `Boolean`     | Optional, defaults to `false` — enables automatic proration for mid-period joins |
+| `gracePeriodDays` | `Integer`     | Optional, defaults to `30` — days after subscription start for payment           |
 
 ### SubscribeMemberInput
 
@@ -625,6 +805,38 @@ Member
 | `currency`             | `String`      | Optional, defaults to `EUR`               |
 | `paymentDate`          | `Date!`       | Not null                                  |
 | `notes`                | `String`      | Optional                                  |
+
+### UploadPaymentDocumentInput
+
+| Field                  | Type      | Constraints                                                  |
+| ---------------------- | --------- | ------------------------------------------------------------ |
+| `memberSubscriptionId` | `ID!`     | Not null, references a MemberSubscription                    |
+| `fileName`             | `String!` | Not null, not blank, max 255 characters — original file name |
+| `fileContent`          | `String!` | Not null — Base64-encoded content of the PDF file            |
+| `notes`                | `String`  | Optional, max 500 characters                                 |
+
+**Behavior:** Validates that the file is a PDF, does not exceed `app.payment.max-document-size` (default 10 MB), and that the subscription's current `paymentStatus` is `NOT_PAID`. Creates a `PaymentDocument` record, stores the file, and transitions the subscription's `paymentStatus` to `IN_REVIEW`. Members can only upload for their own subscriptions. The admin can upload on behalf of any member.
+
+### ReviewPaymentDocumentInput
+
+| Field                  | Type       | Constraints                                                                        |
+| ---------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| `memberSubscriptionId` | `ID!`      | Not null, references a MemberSubscription with `paymentStatus = IN_REVIEW`         |
+| `approved`             | `Boolean!` | Not null — `true` to confirm payment (`REVIEWED`), `false` to reject (`NOT_PAID`)  |
+| `reason`               | `String`   | Optional, max 500 characters — required when `approved = false` (rejection reason) |
+
+**Behavior:** Admin-only. If `approved = true`, transitions `paymentStatus` to `REVIEWED`. If `approved = false`, transitions `paymentStatus` back to `NOT_PAID` (member must re-upload). A rejection reason is required when rejecting.
+
+### OverdueSubscription (Response Type)
+
+| Field            | Type                 | Description                                                            |
+| ---------------- | -------------------- | ---------------------------------------------------------------------- |
+| `member`         | `Member`             | The member who owes payment                                            |
+| `subscription`   | `MemberSubscription` | The overdue subscription                                               |
+| `membershipType` | `MembershipType`     | The membership type (via subscription)                                 |
+| `paymentStatus`  | `String`             | Current payment status (`NOT_PAID` or `IN_REVIEW`)                     |
+| `dueDate`        | `Date`               | The date by which payment was expected (`startDate + gracePeriodDays`) |
+| `daysOverdue`    | `Int`                | Number of days past the due date                                       |
 
 ### TrainerHoursSummary (Response Type)
 
@@ -801,6 +1013,9 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 | `trainerHours`            |   ✓   |        |    ✓    | Admin sees any trainer; trainers see only their own                       |
 | `pendingTrainerLogs`      |   ✓   |        |    ✓    | Admin sees all pending; trainers see only their own pending submissions   |
 | `myTrainerPaymentSummary` |   ✓   |        |    ✓    | Trainer's payment summary (approved hours × hourly rate) for a date range |
+| `overdueSubscriptions`    |   ✓   |        |         | Admin-only — subscriptions past grace period with outstanding payment     |
+| `pendingPaymentReviews`   |   ✓   |        |         | Admin-only — subscriptions with uploaded documents awaiting verification  |
+| `paymentDocuments`        |   ✓   |   ✓    |         | Members can only view documents for their own subscriptions               |
 
 #### Mutations
 
@@ -830,6 +1045,8 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 | `approveTrainerLog`           |   ✓   |        |         | Admin-only — approve pending hours                                                        |
 | `rejectTrainerLog`            |   ✓   |        |         | Admin-only — reject pending hours with a reason                                           |
 | `resubmitTrainerLog`          |   ✓   |        |    ✓    | Trainer resubmits corrected hours after rejection. Admin can do for any                   |
+| `uploadPaymentDocument`       |   ✓   |   ✓    |         | Members upload for own subscriptions; admin uploads for any member                        |
+| `reviewPaymentDocument`       |   ✓   |        |         | Admin-only — verify or reject uploaded payment documents                                  |
 
 > **Note:** `updateTrainer` has no MEMBER column entry because members and trainers are independent roles — a member is not a trainer. `updateTrainerSettings` is admin-only with no trainer or member access.
 
@@ -869,7 +1086,7 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 9. **Subscription requires ACTIVE type**: A subscription can only be created against a membership type with status `ACTIVE`. Attempting to subscribe to a `DRAFT` or `INACTIVE` type returns a validation error.
 10. **End subscription**: The `endSubscription` mutation sets `endDate` to today if the current `endDate` is in the future. It does not delete payment history.
 11. **Payment after end**: Payments cannot be recorded against an ended subscription (`endDate` in the past).
-12. **Renewal**: Continuing a membership after the period ends requires creating a new subscription. There is no auto-renewal in Phase 1.
+12. **Renewal**: Continuing a membership after the period ends requires creating a new subscription. There is no auto-renewal. When a new season is upcoming, the admin publishes a new membership type (or reactivates an existing one) and all active members receive an email notification. Members who wish to continue must contact the admin to request a new subscription.
 
 ### Payments
 
@@ -878,13 +1095,23 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 15. **Zero amount**: Not allowed — amount must be strictly positive.
 16. **Outstanding calculation**: Per subscription: `agreedPrice` minus the sum of all payments linked to that subscription. No rolling-period logic — each subscription is a single billing period.
 
+### Payment Verification & Grace Period
+
+17. **Payment status lifecycle**: Every subscription is created with `paymentStatus = NOT_PAID`. The member uploads a bank-issued payment document (PDF), which transitions the status to `IN_REVIEW`. The admin reviews the document and either confirms (`REVIEWED`) or rejects back to `NOT_PAID`.
+18. **Grace period enforcement**: A subscription is considered **overdue** when `today > startDate + gracePeriodDays` (from the membership type) and `paymentStatus ≠ REVIEWED`. The `overdueSubscriptions` query returns all such subscriptions.
+19. **Payment document upload**: Only PDF files are accepted. The member must upload a bank-issued document (e.g. a bank transfer confirmation). The file is stored externally and its metadata is recorded in `PaymentDocument`. A subscription can have multiple documents (e.g. after a rejection).
+20. **Payment document review**: Admin reviews uploaded documents via `reviewPaymentDocument`. Approval sets `paymentStatus = REVIEWED`. Rejection sets `paymentStatus = NOT_PAID` with a mandatory reason, allowing the member to re-upload.
+21. **Payment document rejection**: When a document is rejected, the `reason` must explain why (e.g. "Amount does not match", "Document is unreadable"). The member is notified and can upload a new document.
+22. **Upload restriction**: A payment document can only be uploaded when `paymentStatus = NOT_PAID`. If the subscription is already `IN_REVIEW` or `REVIEWED`, the upload is rejected.
+23. **Admin can record payment independently**: The existing `recordPayment` mutation can still be used by the admin to record a payment without requiring a document upload. This is useful for cash payments or other offline methods. However, this does **not** automatically change `paymentStatus` — the admin must separately review the payment status if a document workflow is in progress.
+
 ### Prorated Pricing
 
-17. **agreedPrice semantics**: `agreedPrice` on `MemberSubscription` is not null — it is always populated at subscription creation and represents the locked-in billing amount for that subscription period. Once stored, it is immutable and not affected by later changes to the membership type's `price`.
-18. **Default price (non-prorated mode)**: If the admin does not provide an explicit `agreedPrice` and `proratedMode` is `false`, the system copies the membership type's current `price` into the subscription's `agreedPrice`.
-19. **Automatic proration**: When `proratedMode` is `true` on the membership type and the admin does not provide an explicit `agreedPrice`, the system automatically calculates: `agreedPrice = price × (remaining_days / total_period_days)`. This is computed at subscription creation time and stored on the `MemberSubscription` record. The formula uses calendar days. Example: membership type costs €365/year (365 days), member subscribes on July 1 with `endDate` = Dec 31 → 184 remaining days → `agreedPrice = 365 × (184/365) = €184.00`.
-20. **Manual override always wins**: If the admin provides an explicit `agreedPrice` when creating a subscription, it takes precedence regardless of `proratedMode`. This allows the admin to negotiate special prices.
-21. **Renewal**: When a subscription is renewed (new subscription for the next period), the admin can omit `agreedPrice` in the input — the system will populate it from the membership type's price (or prorated calculation if applicable). The admin can also provide an explicit override.
+24. **agreedPrice semantics**: `agreedPrice` on `MemberSubscription` is not null — it is always populated at subscription creation and represents the locked-in billing amount for that subscription period. Once stored, it is immutable and not affected by later changes to the membership type's `price`.
+25. **Default price (non-prorated mode)**: If the admin does not provide an explicit `agreedPrice` and `proratedMode` is `false`, the system copies the membership type's current `price` into the subscription's `agreedPrice`.
+26. **Automatic proration**: When `proratedMode` is `true` on the membership type and the admin does not provide an explicit `agreedPrice`, the system automatically calculates: `agreedPrice = price × (remaining_days / total_period_days)`. This is computed at subscription creation time and stored on the `MemberSubscription` record. The formula uses calendar days. Example: membership type costs €365/year (365 days), member subscribes on July 1 with `endDate` = Dec 31 → 184 remaining days → `agreedPrice = 365 × (184/365) = €184.00`.
+27. **Manual override always wins**: If the admin provides an explicit `agreedPrice` when creating a subscription, it takes precedence regardless of `proratedMode`. This allows the admin to negotiate special prices.
+28. **Renewal**: When a subscription is renewed (new subscription for the next period), the admin can omit `agreedPrice` in the input — the system will populate it from the membership type's price (or prorated calculation if applicable). The admin can also provide an explicit override.
 
 ### Membership Types
 
@@ -937,12 +1164,43 @@ Each GraphQL operation is restricted to one or more roles. Operations not listed
 53. **Anonymized values**: `firstName` → `"DELETED"`, `lastName` → `"DELETED"`, `email` → `"deleted-{id}@anonymous.local"` (keeps uniqueness constraint satisfied), `phoneNumber` → `null`.
 54. **Status history anonymization**: The `reason` field in all `MemberStatusHistory` entries for the member is set to `null` (may contain free-text personal data). A final `DELETED` status entry is added.
 55. **Subscription deactivation**: All active subscriptions for the member are ended (`endDate` = today).
-56. **Payment records retained**: Payment rows are **not** deleted or anonymized. Austrian tax law (BAO §132) requires financial records to be retained for 7 years. Since `Payment` links to `MemberSubscription` (not directly to personal data), no personal information leaks through payment records after anonymization. Payments survive the purge job (see rule 61) — `MemberSubscription` rows referenced by payments are retained as orphaned records with no link back to personal data.
+56. **Payment records retained**: Payment rows are **not** deleted or anonymized. Austrian tax law (BAO §132) requires financial records to be retained for 7 years. Since `Payment` links to `MemberSubscription` (not directly to personal data), no personal information leaks through payment records after anonymization. Payments survive the purge job (see rule 68) — `MemberSubscription` rows referenced by payments are retained as orphaned records with no link back to personal data.
 57. **Idempotency**: Calling `deleteMember` on an already-deleted member (status = `DELETED`) returns success without further changes.
 58. **No recovery**: Anonymization is irreversible. The mutation should require explicit confirmation or be clearly documented as a destructive action.
 59. **Terminal status**: Once a member has status `DELETED`, no further status transitions, updates, or new subscriptions are allowed. The member is effectively frozen until the purge job removes the row.
 60. **Trainer erasure**: Not in scope for Phase 1. Trainers who request erasure will be handled manually or in a future phase.
 61. **Scheduled purge job**: A configurable scheduled job (`cron`) runs periodically (default: every 24 hours) and **hard-deletes** all member rows that have been in `DELETED` status for longer than a configurable retention period (default: 30 days). The retention period allows the admin to detect accidental erasures before permanent removal. The purge cascades in order: `MemberStatusHistory` entries → `MemberSubscription` rows that have **no** associated `Payment` records → the `Member` row itself. `MemberSubscription` rows that still have `Payment` records are **retained** (with their `memberId` set to `null` or left as a dangling reference — the payment retention obligation under BAO §132 takes precedence). Both the schedule interval and the retention period are externalized as application configuration properties (`app.gdpr.purge-cron` and `app.gdpr.retention-days`).
+
+### Notifications
+
+69. **Notification triggers**: The system sends email notifications for the following events:
+
+| Trigger Event                                          | Recipient(s)                    | Timing                                                   |
+| ------------------------------------------------------ | ------------------------------- | -------------------------------------------------------- |
+| Payment grace period expired (member still `NOT_PAID`) | Admin                           | Daily check (cron)                                       |
+| Payment document uploaded by member                    | Admin                           | Immediately after upload                                 |
+| Unpaid subscription reminder                           | Member (with `NOT_PAID` status) | Recurring, configurable interval (default: every 7 days) |
+| Membership type published (`DRAFT` to `ACTIVE`)        | All active members              | Immediately after status change                          |
+
+70. **Overdue payment detection**: A scheduled job runs daily (configurable via `app.notification.overdue-check-cron`, default: `0 8 * * *` — 08:00 daily). It queries all `MemberSubscription` entries where `paymentStatus = NOT_PAID` and the grace period has expired (`startDate + membershipType.gracePeriodDays < today`). For each, it sends an admin notification and a member reminder (if the last reminder was sent more than `app.notification.reminder-interval-days` ago).
+71. **Reminder throttling**: Member reminders for unpaid subscriptions are sent at most once every `app.notification.reminder-interval-days` (default: 7). The system tracks the last reminder timestamp per subscription to avoid spamming.
+72. **Membership publication notification**: When a membership type transitions from `DRAFT` to `ACTIVE`, the system sends an email to all members with `MemberStatus = ACTIVE`. The email contains the membership type name, description, price, and duration. This allows members to learn about new offerings and subscribe.
+73. **Notification is best-effort**: Email delivery failures do not roll back the triggering operation. Failed sends are logged at `WARN` level. A retry mechanism is out of scope for Phase 1.
+74. **No in-app notifications in Phase 1**: All notifications are email-only. Push notifications, SMS, or in-app message centers are deferred to future phases.
+75. **Phase 1 implementation — mock (no-op)**: Phase 1 defines a `NotificationService` interface in the domain layer with methods for each trigger (overdue alerts, payment reminders, document upload alerts, membership publication emails). The production implementation in Phase 1 is a **logging-only mock** — it logs the notification event at `INFO` level but does not send real emails. Domain services depend on the `NotificationService` interface, never on the concrete implementation. When real email delivery is added in a future phase, it replaces the mock via `@Primary` or a Spring profile without changing any domain code.
+
+### Configuration Properties
+
+The following application properties are externalized for runtime configuration:
+
+| Property                                  | Default                     | Description                                                           |
+| ----------------------------------------- | --------------------------- | --------------------------------------------------------------------- |
+| `app.gdpr.purge-cron`                     | `0 0 2 * * *` (02:00 daily) | Schedule for the GDPR purge job                                       |
+| `app.gdpr.retention-days`                 | `30`                        | Days a DELETED member is retained before hard-delete                  |
+| `app.notification.overdue-check-cron`     | `0 0 8 * * *` (08:00 daily) | Schedule for overdue payment detection                                |
+| `app.notification.reminder-interval-days` | `7`                         | Minimum days between member payment reminders                         |
+| `app.payment.max-document-size-bytes`     | `10485760` (10 MB)          | Maximum upload size for payment documents                             |
+| `app.payment.grace-period-default-days`   | `30`                        | Default grace period when `MembershipType.gracePeriodDays` is not set |
 
 ---
 
@@ -1757,7 +2015,7 @@ mutation {
 }
 ```
 
-> **Note (Phase 2):** Upon activation, the system will eventually send SMS and email notifications to all active members informing them that a new membership option is available. Phase 1 does not implement the notification — the `changeMembershipTypeStatus` mutation is the future integration point.
+> **Notification:** Upon activation (`DRAFT` to `ACTIVE`), the system sends an email notification to all active members informing them that a new membership option is available (see rule 72). SMS notifications are deferred to Phase 2.
 
 **Step 6: Member subscribes mid-season (prorated mode applies)**
 
@@ -2002,7 +2260,7 @@ mutation {
 }
 ```
 
-> **Note (Phase 2):** Upon activation, a notification (SMS + email) will be sent to all active members. Phase 1 does not implement the notification itself.
+> **Notification:** Upon activation, the system sends an email notification to all active members (see rule 72). SMS is deferred to Phase 2.
 
 **Step 7: Member subscribes mid-season (prorated mode applies)**
 
@@ -2300,7 +2558,269 @@ query {
 }
 ```
 
-Karl has 4 approved sessions (8 hours × €35/hr = €280 owed) and 1 session still pending approval.
+Karl has 4 approved sessions (8 hours x EUR 35/hr = EUR 280 owed) and 1 session still pending approval.
+
+### Example 20 — Full season workflow: Badminton club (Anna, John, Lucas)
+
+This example demonstrates the complete lifecycle of a club season: membership creation, member subscriptions, payment verification with grace period, overdue detection, mid-season joining with prorated price, and season renewal notification.
+
+**Context:** A Badminton club managed by an admin. Three members: Anna, John, and Lucas.
+
+**Step 1: Admin creates two membership types**
+
+```graphql
+mutation {
+  createMembershipType(
+    input: {
+      name: "Badminton Training"
+      description: "Weekly coached Badminton training on Wednesdays 18:00-20:00"
+      price: 220.00
+      duration: 12
+      unit: MONTH
+      gracePeriodDays: 30
+    }
+  ) {
+    id
+    name
+    price
+    status {
+      name
+    }
+    gracePeriodDays
+  }
+}
+```
+
+```graphql
+mutation {
+  createMembershipType(
+    input: {
+      name: "Free Game"
+      description: "Open play on Mondays 18:00-20:30"
+      price: 180.00
+      duration: 12
+      unit: MONTH
+      gracePeriodDays: 30
+    }
+  ) {
+    id
+    name
+    price
+    status {
+      name
+    }
+    gracePeriodDays
+  }
+}
+```
+
+Both are created in `DRAFT` status.
+
+**Step 2: Admin publishes the membership types**
+
+```graphql
+mutation {
+  updateMembershipTypeStatus(
+    input: { id: "<badminton-training-id>", statusName: "ACTIVE" }
+  ) {
+    id
+    status {
+      name
+    }
+  }
+}
+```
+
+When the status transitions from `DRAFT` to `ACTIVE`, the system sends an email notification to all active members informing them about the new "Badminton Training" membership (see rule 72). The same is done for "Free Game".
+
+**Step 3: Admin subscribes Anna, John, and Lucas**
+
+Anna and John subscribe at the start of the season (October 1):
+
+```graphql
+mutation {
+  subscribeMember(
+    input: {
+      memberId: "<anna-id>"
+      membershipTypeId: "<badminton-training-id>"
+      startDate: "2026-10-01"
+      endDate: "2027-09-30"
+    }
+  ) {
+    id
+    agreedPrice
+    paymentStatus {
+      name
+    }
+  }
+}
+```
+
+**Expected:** `agreedPrice = 220.00`, `paymentStatus = NOT_PAID`.
+
+The same mutation is called for John. Both subscriptions start with `paymentStatus = NOT_PAID` and a 30-day grace period.
+
+**Step 4: Anna uploads a payment document**
+
+Anna pays via bank transfer and uploads the confirmation PDF:
+
+```graphql
+mutation {
+  uploadPaymentDocument(
+    input: {
+      memberSubscriptionId: "<anna-subscription-id>"
+      fileName: "anna_payment_oct2026.pdf"
+      contentType: "application/pdf"
+      fileContentBase64: "JVBERi0xLjQK..."
+      notes: "Bank transfer confirmation for Badminton Training 2026/2027"
+    }
+  ) {
+    id
+    fileName
+    uploadedAt
+  }
+}
+```
+
+This changes Anna's `paymentStatus` from `NOT_PAID` to `IN_REVIEW` (see rule 19).
+
+**Step 5: Admin reviews Anna's payment**
+
+```graphql
+mutation {
+  reviewPaymentDocument(
+    input: { paymentDocumentId: "<anna-document-id>", approved: true }
+  ) {
+    id
+    memberSubscription {
+      paymentStatus {
+        name
+      }
+    }
+  }
+}
+```
+
+**Expected:** Anna's `paymentStatus` is now `REVIEWED`.
+
+John also pays and follows the same upload/review flow.
+
+**Step 6: Grace period expires — Lucas has not paid**
+
+After 30 days (November 1), the daily overdue-check job (see rule 70) detects that Lucas still has `paymentStatus = NOT_PAID` and his grace period has expired. The system:
+
+- Sends an email notification to the admin listing Lucas as overdue
+- Sends a payment reminder email to Lucas
+
+The admin can also query overdue subscriptions:
+
+```graphql
+query {
+  overdueSubscriptions {
+    member {
+      firstName
+      lastName
+      email
+    }
+    memberSubscription {
+      id
+      agreedPrice
+      startDate
+      paymentStatus {
+        name
+      }
+    }
+    membershipType {
+      name
+      gracePeriodDays
+    }
+    daysPastGrace
+  }
+}
+```
+
+**Expected output:**
+
+```json
+{
+  "data": {
+    "overdueSubscriptions": [
+      {
+        "member": {
+          "firstName": "Lucas",
+          "lastName": "Berger",
+          "email": "lucas@example.com"
+        },
+        "memberSubscription": {
+          "id": "<lucas-subscription-id>",
+          "agreedPrice": 220.0,
+          "startDate": "2026-10-01",
+          "paymentStatus": { "name": "NOT_PAID" }
+        },
+        "membershipType": {
+          "name": "Badminton Training",
+          "gracePeriodDays": 30
+        },
+        "daysPastGrace": 1
+      }
+    ]
+  }
+}
+```
+
+**Step 7: Lucas joins 6 months later with prorated price**
+
+Lucas did not pay his original subscription. The admin cancels it and creates a new subscription starting April 1 with a negotiated prorated price for the remaining 6 months:
+
+```graphql
+mutation {
+  subscribeMember(
+    input: {
+      memberId: "<lucas-id>"
+      membershipTypeId: "<badminton-training-id>"
+      startDate: "2027-04-01"
+      endDate: "2027-09-30"
+      agreedPrice: 110.00
+      proratedMode: false
+    }
+  ) {
+    id
+    agreedPrice
+    startDate
+    endDate
+    paymentStatus {
+      name
+    }
+  }
+}
+```
+
+**Expected:** `agreedPrice = 110.00` (manually negotiated by admin — half the annual price for 6 months). `paymentStatus = NOT_PAID`. Grace period of 30 days begins.
+
+Alternatively, the admin could use automatic proration:
+
+```graphql
+mutation {
+  subscribeMember(
+    input: {
+      memberId: "<lucas-id>"
+      membershipTypeId: "<badminton-training-id>"
+      startDate: "2027-04-01"
+      endDate: "2027-09-30"
+      proratedMode: true
+    }
+  ) {
+    id
+    agreedPrice
+  }
+}
+```
+
+**Expected:** `agreedPrice` is automatically calculated as `220.00 x (183 / 365) = 110.27` (see rule 26).
+
+**Step 8: Season ends — new memberships published**
+
+At the end of the season, the admin creates new membership types for the next year and publishes them. All active members (including Anna, John, and Lucas) receive an email notification about the new offerings (see rule 72). Members must be explicitly subscribed to the new period — there is no automatic renewal (see rule 12).
 
 ---
 
@@ -2315,7 +2835,7 @@ Not applicable in the traditional algorithmic sense. Performance targets for Pha
 | Mutations             | < 100 ms                        |
 | Outstanding payments  | < 500 ms (involves aggregation) |
 
-Database indices should cover: `member.email`, `member_status_history.member_id`, `member_status_history.changed_at`, `member_subscription.member_id`, `member_subscription.membership_type_id`, `member_subscription.end_date`, `payment.member_subscription_id`, `session.day_of_week`, `session.trainer_id`, `session.session_type_id`, `session_occurrence.session_id`, `session_occurrence.date`, `session_occurrence(session_id, date)` (unique), `trainer_log.trainer_id`, `trainer_log.session_occurrence_id`, `trainer_log.status_id`, `trainer_log(trainer_id, session_occurrence_id)` (unique), `trainer_settings.trainer_id` (unique), `membership_type_session` (composite PK).
+Database indices should cover: `member.email`, `member_status_history.member_id`, `member_status_history.changed_at`, `member_subscription.member_id`, `member_subscription.membership_type_id`, `member_subscription.end_date`, `member_subscription.payment_status_id`, `payment.member_subscription_id`, `payment_document.member_subscription_id`, `session.day_of_week`, `session.trainer_id`, `session.session_type_id`, `session_occurrence.session_id`, `session_occurrence.date`, `session_occurrence(session_id, date)` (unique), `trainer_log.trainer_id`, `trainer_log.session_occurrence_id`, `trainer_log.status_id`, `trainer_log(trainer_id, session_occurrence_id)` (unique), `trainer_settings.trainer_id` (unique), `membership_type_session` (composite PK).
 
 ---
 
@@ -2333,6 +2853,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
     implementation 'org.springframework.boot:spring-boot-h2console'
 
     // GraphQL extended scalars (Date, DateTime, BigDecimal, Long, etc.)
@@ -2391,6 +2912,7 @@ at.mavila.dbchatbox.domain.club.membership     — MembershipType entity, Member
 at.mavila.dbchatbox.domain.club.payment        — Payment entity, service, outstanding-dues logic
 at.mavila.dbchatbox.domain.club.session        — Session entity, SessionType, SessionOccurrence, SessionOccurrenceStatus, service
 at.mavila.dbchatbox.domain.club.trainer        — Trainer entity, TrainerSettings entity, TrainerLog, hours aggregation
+at.mavila.dbchatbox.domain.club.notification   — Email notification service, overdue payment detection, reminder scheduling
 ```
 
 ### Database Migrations — Flyway
@@ -2550,11 +3072,11 @@ The system implements Art. 17 DSGVO (right to erasure) via **in-place anonymizat
 
 ### Future Phases (out of scope)
 
-- **Phase 2**: Automated invoices, payment reminders, **member notifications** (SMS + email on membership type activation, session cancellation, etc.), member/trainer login portals, online hour logging, member self-registration & self-service, online payment.
+- **Phase 2**: Automated invoices, SMS notifications, member/trainer login portals, online hour logging, member self-registration & self-service, online payment integration.
 - **Phase 3**: Online training registration, automated payments, statistics dashboards, full online administration.
 - **Professional players**: Dedicated player/team entities, tournament participation, performance tracking, special contracts. Deferred until clarified whether professional players require separate treatment.
 
-> **Notification hook (Phase 2 preparation):** When a membership type transitions from `DRAFT → ACTIVE` (i.e. it is "published"), the system should eventually notify all active members via SMS and email that a new membership option is available. Phase 1 defines the activation lifecycle but does **not** implement the notification itself. The `changeMembershipTypeStatus` mutation is the integration point — Phase 2 will attach a notification service to this event.
+> **Notifications in Phase 1:** Email notifications for membership type publication (`DRAFT` to `ACTIVE`), overdue payment alerts, and payment reminders are implemented in Phase 1 (see rules 69-74). SMS notifications and in-app messaging are deferred to Phase 2.
 
 ### Enum Storage Pattern
 

@@ -8,16 +8,16 @@
 
 ## Project Context
 
-| Aspect               | Value                                                                                                                  |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Language**         | Java 25 (toolchain)                                                                                                    |
-| **Framework**        | Spring Boot 4.0.5                                                                                                      |
-| **API style**        | GraphQL (Spring for GraphQL) — no REST controllers                                                                     |
-| **Build tool**       | Gradle (Groovy DSL)                                                                                                    |
-| **Testing**          | JUnit 5 + AssertJ + `ExecutionGraphQlServiceTester`                                                                    |
-| **Libraries**        | Lombok, Apache Commons Lang 3, graphql-java-extended-scalars, spring-boot-starter-validation (Jakarta Bean Validation) |
-| **Mutation testing** | Pitest                                                                                                                 |
-| **Base package**     | `at.mavila.dbchatbox`                                                                                                  |
+| Aspect               | Value                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Language**         | Java 25 (toolchain)                                                                                                                              |
+| **Framework**        | Spring Boot 4.0.5                                                                                                                                |
+| **API style**        | GraphQL (Spring for GraphQL) — no REST controllers                                                                                               |
+| **Build tool**       | Gradle (Groovy DSL)                                                                                                                              |
+| **Testing**          | JUnit 5 + AssertJ + `ExecutionGraphQlServiceTester`                                                                                              |
+| **Libraries**        | Lombok, Apache Commons Lang 3, graphql-java-extended-scalars, spring-boot-starter-validation (Jakarta Bean Validation), spring-boot-starter-mail |
+| **Mutation testing** | Pitest                                                                                                                                           |
+| **Base package**     | `at.mavila.dbchatbox`                                                                                                                            |
 
 ---
 
