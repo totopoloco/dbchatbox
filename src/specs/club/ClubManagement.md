@@ -45,7 +45,7 @@
    - [UploadPaymentDocumentInput](#uploadpaymentdocumentinput)
    - [ReviewPaymentDocumentInput](#reviewpaymentdocumentinput)
    - [OverdueSubscription](#overduesubscription-response-type)
-   - [TrainerHoursSummary](#trainerhouressummary-response-type)
+   - [TrainerHoursSummary](#trainerhourssummary-response-type)
    - [DeleteMemberResult](#deletememberresult-response-type)
    - [CreateSessionInput](#createsessioninput)
    - [CreateSessionOccurrencesInput](#createsessionoccurrencesinput)
@@ -56,7 +56,7 @@
    - [CreateTrainerInput](#createtrainerinput)
    - [UpdateTrainerInput](#updatetrainerinput)
    - [UpdateTrainerSettingsInput](#updatetrainersettingsinput)
-   - [TrainerPaymentSummary](#trainerpayoursummary-response-type)
+   - [TrainerPaymentSummary](#trainerpaymentsummary-response-type)
 6. [Authorization & Roles](#authorization--roles)
    - [Operation Access Matrix](#operation-access-matrix)
    - [Authorization Rules](#authorization-rules)
@@ -73,7 +73,7 @@
    - [Trainers](#trainers) (46–49)
    - [Trainer Hour Submissions & Approval](#trainer-hour-submissions--approval) (50–58)
    - [GDPR — Right to Erasure](#gdpr--right-to-erasure-art-17-dsgvo) (59–68)
-   - [Notifications](#notifications) (69–74)
+   - [Notifications](#notifications) (69–75)
    - [Configuration Properties](#configuration-properties)
 8. [Examples](#examples)
    - [Example 1 — Register a new member](#example-1--register-a-new-member)
@@ -644,24 +644,45 @@ Stores **compensation and workflow configuration** for a trainer — how they ar
 
 ## Entity Relationship Summary
 
-```
-Member
-  │
-  ├── MemberStatusHistory ── Status
-  │
-  └── MemberSubscription ──── MembershipType ── Unit
-       │         │                │            │
-       │         │                │         MembershipTypeStatus
-       │         │         MembershipTypeSession ── Session ── SessionType
-       │         │                                     │
-       │         │                                     ├── SessionOccurrence ── SessionOccurrenceStatus
-       │         │                                     │        │
-       │         ├── Payment                           │   TrainerLog ── TrainerLogStatus
-       │         │                                     │
-       │         ├── PaymentDocument                Trainer
-       │         │                                     │
-       │         └── SubscriptionPaymentStatus    TrainerSettings ── TrainerPaymentMode
-```
+#### Member Domain
+
+    Member 1──N MemberStatusHistory N──1 Status
+      |
+      | 1──N
+      |
+    MemberSubscription N──1 SubscriptionPaymentStatus
+      |         |
+      | 1──N    | 1──N
+      |         |
+    Payment   PaymentDocument
+
+#### Membership Domain
+
+    MemberSubscription N──1 MembershipType N──1 Unit
+                              |            N──1 MembershipTypeStatus
+                              |
+                              | M──N (via MembershipTypeSession)
+                              |
+                            Session
+
+#### Session Domain
+
+    Session N──1 SessionType
+      |  |
+      |  | N──0..1 Trainer  (TRAINING sessions only)
+      |
+      | 1──N
+      |
+    SessionOccurrence N──1 SessionOccurrenceStatus
+      |
+      | 1──N
+      |
+    TrainerLog N──1 Trainer
+               N──1 TrainerLogStatus
+
+#### Trainer Domain
+
+    Trainer 1──1 TrainerSettings N──1 TrainerPaymentMode
 
 **Key relationships:**
 
