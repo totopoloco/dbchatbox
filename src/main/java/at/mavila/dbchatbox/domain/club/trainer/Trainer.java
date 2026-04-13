@@ -5,6 +5,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -44,4 +45,8 @@ public class Trainer {
 
   @Column(name = "phone_number")
   private String phoneNumber;
+
+  @Version
+  @Column(nullable = false)
+  private Short version;
 }

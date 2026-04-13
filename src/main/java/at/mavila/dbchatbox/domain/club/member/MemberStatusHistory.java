@@ -1,5 +1,7 @@
 package at.mavila.dbchatbox.domain.club.member;
 
+import java.time.LocalDateTime;
+
 import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,19 +12,19 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
-
 /**
  * Tracks every status transition for a member, providing a full audit trail.
  *
  * <p>
- * The current status of a member is determined by the most recent entry (ordered by {@code changedAt} descending).
+ * The current status of a member is determined by the most recent entry
+ * (ordered by {@code changedAt} descending).
  * </p>
  *
  * @since 2026-04-09
@@ -53,4 +55,8 @@ public class MemberStatusHistory {
 
   @Column(length = 500)
   private String reason;
+
+  @Version
+  @Column(nullable = false)
+  private Short version;
 }

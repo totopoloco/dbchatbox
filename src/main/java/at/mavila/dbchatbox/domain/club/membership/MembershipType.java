@@ -1,5 +1,9 @@
 package at.mavila.dbchatbox.domain.club.membership;
 
+import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.Set;
+
 import at.mavila.dbchatbox.domain.club.training.Session;
 import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
@@ -11,22 +15,22 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
-import java.util.HashSet;
-import java.util.Set;
-
 /**
- * Defines a type of membership the club offers (e.g., "Free Games", "Training").
+ * Defines a type of membership the club offers (e.g., "Free Games",
+ * "Training").
  *
  * <p>
- * Includes pricing, duration, linked sessions, and lifecycle status. New membership types start in
- * {@link MembershipTypeStatus#DRAFT} and must be explicitly activated before subscriptions can be created.
+ * Includes pricing, duration, linked sessions, and lifecycle status. New
+ * membership types start in
+ * {@link MembershipTypeStatus#DRAFT} and must be explicitly activated before
+ * subscriptions can be created.
  * </p>
  *
  * @since 2026-04-09
@@ -68,8 +72,16 @@ public class MembershipType {
   @Builder.Default
   private Boolean proratedMode = false;
 
+  @Column(name = "grace_period_days", nullable = false)
+  @Builder.Default
+  private Integer gracePeriodDays = 30;
+
   @ManyToMany
   @JoinTable(name = "membership_type_session", joinColumns = @JoinColumn(name = "membership_type_id"), inverseJoinColumns = @JoinColumn(name = "session_id"))
   @Builder.Default
   private Set<Session> sessions = new HashSet<>();
+
+  @Version
+  @Column(nullable = false)
+  private Short version;
 }

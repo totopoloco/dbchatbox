@@ -29,18 +29,29 @@ public class SubscriptionController {
 
   // ==================== QUERIES ====================
 
+  /**
+   * Returns subscriptions for a member, optionally filtered by active state.
+   *
+   * @param memberId the member ID
+   * @param active   optional filter — {@code true} for active only, {@code false}
+   *                 for ended only
+   * @return list of matching subscriptions
+   */
   @QueryMapping
-  public List<MemberSubscription> memberSubscriptions(@Argument
-  final Long memberId, @Argument
-  final Boolean active) {
+  public List<MemberSubscription> memberSubscriptions(@Argument final Long memberId, @Argument final Boolean active) {
     return subscriptionService.findByMember(memberId, active);
   }
 
   // ==================== MUTATIONS ====================
 
+  /**
+   * Subscribes a member to a membership type for a specific period.
+   *
+   * @param input the subscription input
+   * @return the created subscription
+   */
   @MutationMapping
-  public MemberSubscription subscribeMember(@Argument
-  final Map<String, Object> input) {
+  public MemberSubscription subscribeMember(@Argument final Map<String, Object> input) {
     final var command = new SubscribeMemberCommand(Long.valueOf(input.get("memberId").toString()),
         Long.valueOf(input.get("membershipTypeId").toString()), (LocalDate) input.get("startDate"),
         (LocalDate) input.get("endDate"),
@@ -48,16 +59,39 @@ public class SubscriptionController {
     return subscriptionService.subscribeMember(command);
   }
 
+  /**
+   * Ends a subscription early by setting its end date to today.
+   *
+   * @param id the subscription ID
+   * @return the updated subscription
+   */
   @MutationMapping
-  public MemberSubscription endSubscription(@Argument
-  final Long id) {
+  public MemberSubscription endSubscription(@Argument final Long id) {
     return subscriptionService.endSubscription(id);
   }
 
   // ==================== TYPE RESOLVERS ====================
 
+  /**
+   * Resolves whether a subscription is currently active
+   * ({@code endDate >= today}).
+   *
+   * @param subscription the subscription to check
+   * @return {@code true} if the subscription is active
+   */
   @SchemaMapping(typeName = "MemberSubscription", field = "active")
   public boolean active(final MemberSubscription subscription) {
     return !subscription.getEndDate().isBefore(LocalDate.now());
+  }
+
+  /**
+   * Resolves the payment status name for a subscription.
+   *
+   * @param subscription the subscription
+   * @return the payment status as a string
+   */
+  @SchemaMapping(typeName = "MemberSubscription", field = "paymentStatus")
+  public String paymentStatus(final MemberSubscription subscription) {
+    return subscription.getPaymentStatus().name();
   }
 }

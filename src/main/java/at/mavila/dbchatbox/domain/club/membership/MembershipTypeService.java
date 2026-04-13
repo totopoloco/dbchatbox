@@ -12,13 +12,15 @@ import org.springframework.transaction.annotation.Transactional;
 import at.mavila.dbchatbox.domain.club.exception.DuplicateNameException;
 import at.mavila.dbchatbox.domain.club.exception.InvalidStatusTransitionException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
+import at.mavila.dbchatbox.domain.club.notification.NotificationService;
 import at.mavila.dbchatbox.domain.club.training.Session;
 import at.mavila.dbchatbox.domain.club.training.SessionRepository;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Domain service for membership type management — creation, status transitions, session linkage.
+ * Domain service for membership type management — creation, status transitions,
+ * session linkage.
  *
  * @since 2026-04-09
  */
@@ -33,15 +35,16 @@ public class MembershipTypeService {
   private final MembershipTypeRepository membershipTypeRepository;
   private final SessionRepository sessionRepository;
   private final CommandValidator commandValidator;
+  private final NotificationService notificationService;
 
   /**
    * Creates a new membership type in DRAFT status.
    *
    * @param command
-   *                  the creation command
+   *                the creation command
    * @return the created membership type
    * @throws DuplicateNameException
-   *                                  if the name is already in use
+   *                                if the name is already in use
    */
   public MembershipType create(final CreateMembershipTypeCommand command) {
     commandValidator.validate(command);
@@ -52,7 +55,8 @@ public class MembershipTypeService {
 
     final MembershipType type = MembershipType.builder().name(command.name()).description(command.description())
         .price(command.price()).duration(command.duration()).unit(command.unit()).status(MembershipTypeStatus.DRAFT)
-        .proratedMode(isNull(command.proratedMode()) ? false : command.proratedMode()).build();
+        .proratedMode(isNull(command.proratedMode()) ? false : command.proratedMode())
+        .gracePeriodDays(isNull(command.gracePeriodDays()) ? 30 : command.gracePeriodDays()).build();
 
     return membershipTypeRepository.save(type);
   }
@@ -61,14 +65,15 @@ public class MembershipTypeService {
    * Transitions the membership type to a new status.
    *
    * @param id
-   *                    the membership type ID
+   *                  the membership type ID
    * @param newStatus
-   *                    the target status
+   *                  the target status
    * @return the updated membership type
    * @throws ResourceNotFoundException
-   *                                            if the membership type does not exist
+   *                                          if the membership type does not
+   *                                          exist
    * @throws InvalidStatusTransitionException
-   *                                            if the transition is not allowed
+   *                                          if the transition is not allowed
    */
   public MembershipType changeStatus(final Long id, final MembershipTypeStatus newStatus) {
     final MembershipType type = findByIdOrThrow(id);
@@ -78,18 +83,29 @@ public class MembershipTypeService {
       throw new InvalidStatusTransitionException(type.getStatus().name(), newStatus.name());
     }
 
+    final boolean isDraftToActive = type.getStatus() == MembershipTypeStatus.DRAFT
+        && newStatus == MembershipTypeStatus.ACTIVE;
+
     type.setStatus(newStatus);
-    return membershipTypeRepository.save(type);
+    final MembershipType saved = membershipTypeRepository.save(type);
+
+    if (isDraftToActive) {
+      notificationService.notifyMembershipTypePublished(saved);
+    }
+
+    return saved;
   }
 
   /**
    * Links a session to a membership type.
    *
    * @param membershipTypeId
-   *                           the membership type ID
+   *                         the membership type ID
    * @param sessionId
-   *                           the session ID
+   *                         the session ID
    * @return the updated membership type
+   * @throws ResourceNotFoundException if the membership type or session does not
+   *                                   exist
    */
   public MembershipType assignSession(final Long membershipTypeId, final Long sessionId) {
     final MembershipType type = findByIdOrThrow(membershipTypeId);
@@ -104,10 +120,11 @@ public class MembershipTypeService {
    * Unlinks a session from a membership type.
    *
    * @param membershipTypeId
-   *                           the membership type ID
+   *                         the membership type ID
    * @param sessionId
-   *                           the session ID
+   *                         the session ID
    * @return the updated membership type
+   * @throws ResourceNotFoundException if the membership type does not exist
    */
   public MembershipType removeSession(final Long membershipTypeId, final Long sessionId) {
     final MembershipType type = findByIdOrThrow(membershipTypeId);
@@ -119,7 +136,7 @@ public class MembershipTypeService {
    * Lists all membership types, optionally filtered by status.
    *
    * @param status
-   *                 the status filter (null for all)
+   *               the status filter (null for all)
    * @return matching membership types
    */
   @Transactional(readOnly = true)
@@ -134,10 +151,10 @@ public class MembershipTypeService {
    * Finds a membership type by ID.
    *
    * @param id
-   *             the ID
+   *           the ID
    * @return the membership type
    * @throws ResourceNotFoundException
-   *                                     if not found
+   *                                   if not found
    */
   @Transactional(readOnly = true)
   public MembershipType findById(final Long id) {

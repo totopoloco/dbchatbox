@@ -28,10 +28,11 @@ public class TrainerService {
   private final CommandValidator commandValidator;
 
   /**
-   * Registers a new trainer and creates the initial {@link TrainerSettings} in a single transaction.
+   * Registers a new trainer and creates the initial {@link TrainerSettings} in a
+   * single transaction.
    *
    * @param command
-   *                  the creation command
+   *                the creation command
    * @return the created trainer
    */
   public Trainer createTrainer(final CreateTrainerCommand command) {
@@ -57,9 +58,9 @@ public class TrainerService {
    * Updates a trainer's contact details only (name, email, phone).
    *
    * @param id
-   *                  the trainer ID
+   *                the trainer ID
    * @param command
-   *                  the update command (null fields are not changed)
+   *                the update command (null fields are not changed)
    * @return the updated trainer
    */
   public Trainer updateTrainer(final Long id, final UpdateTrainerCommand command) {
@@ -89,9 +90,9 @@ public class TrainerService {
    * Updates a trainer's compensation and workflow settings (admin-only).
    *
    * @param trainerId
-   *                    the trainer ID
+   *                  the trainer ID
    * @param command
-   *                    the settings update command (null fields are not changed)
+   *                  the settings update command (null fields are not changed)
    * @return the updated settings
    */
   public TrainerSettings updateTrainerSettings(final Long trainerId, final UpdateTrainerSettingsCommand command) {
@@ -115,7 +116,7 @@ public class TrainerService {
    * Finds the settings for a given trainer.
    *
    * @param trainerId
-   *                    the trainer ID
+   *                  the trainer ID
    * @return the trainer settings
    */
   @Transactional(readOnly = true)
@@ -124,11 +125,23 @@ public class TrainerService {
         .orElseThrow(() -> new ResourceNotFoundException("TrainerSettings", trainerId));
   }
 
+  /**
+   * Returns all trainers.
+   *
+   * @return list of all trainers
+   */
   @Transactional(readOnly = true)
   public List<Trainer> findAll() {
     return trainerRepository.findAll();
   }
 
+  /**
+   * Finds a trainer by ID.
+   *
+   * @param id the trainer ID
+   * @return the trainer
+   * @throws ResourceNotFoundException if the trainer does not exist
+   */
   @Transactional(readOnly = true)
   public Trainer findById(final Long id) {
     return trainerRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Trainer", id));

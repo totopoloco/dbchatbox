@@ -50,12 +50,14 @@ The system manages a sports/social club with the following core entities:
 - **Member** — club members with status lifecycle (ACTIVE → INACTIVE → DELETED)
 - **Trainer** — trainers who lead sessions (contact details only)
 - **TrainerSettings** — per-trainer compensation and workflow settings (hourly rate, payment mode, auto-approve)
-- **MembershipType** — subscription templates (e.g. "Gold Monthly") with pricing and linked sessions
-- **MemberSubscription** — a member's active subscription to a membership type
+- **MembershipType** — subscription templates (e.g. "Gold Monthly") with pricing, linked sessions, and configurable grace period
+- **MemberSubscription** — a member's active subscription to a membership type, with payment verification status
 - **Payment** — payments against subscriptions
+- **PaymentDocument** — payment proof documents (bank-issued PDFs) uploaded by members for admin verification
 - **Session** — recurring weekly training slots
 - **SessionOccurrence** — concrete instances of sessions on specific dates
 - **TrainerLog** — trainer hour tracking with approval workflow
+- **NotificationService** — domain interface for admin alerts and member reminders (logging-only mock in Phase 1)
 
 ## GraphQL API
 
@@ -169,13 +171,103 @@ src/main/java/at/mavila/dbchatbox/
 │   ├── club/
 │   │   ├── exception/   # Domain exceptions
 │   │   ├── member/      # Member entity, service, GDPR service, repository
-│   │   ├── membership/  # MembershipType, MemberSubscription, Payment
+│   │   ├── membership/  # MembershipType, status management, grace period
+│   │   ├── notification/ # NotificationService interface + logging-only mock
+│   │   ├── payment/     # Payment, PaymentDocument, upload/review workflow
+│   │   ├── subscription/ # MemberSubscription, payment status tracking
 │   │   ├── trainer/     # Trainer, TrainerSettings, TrainerLog
 │   │   └── training/    # Session, SessionOccurrence
-│   └── support/         # TSID generator
+│   └── support/         # TSID generator, command validator
 └── infrastructure/
     └── web/graphql/     # GraphQL controllers, scalar config, error handling
 ```
+
+## Features
+
+### Payment Verification Workflow
+
+Members can upload bank-issued PDF documents as proof of payment for their subscriptions. The workflow:
+
+1. Subscription is created with `paymentStatus = NOT_PAID`
+2. Member uploads a payment document via `uploadPaymentDocument` → status transitions to `IN_REVIEW`
+3. Admin reviews via `reviewPaymentDocument` → status transitions to `REVIEWED` (approved) or back to `NOT_PAID` (rejected)
+
+```graphql
+# Upload a payment document
+mutation {
+  uploadPaymentDocument(
+    input: {
+      memberSubscriptionId: "123"
+      fileName: "bank-transfer-receipt.pdf"
+      fileContent: "JVBERi0x..." # Base64-encoded PDF
+      notes: "Transfer from account AT12 3456"
+    }
+  ) {
+    id
+    fileName
+    uploadedAt
+  }
+}
+
+# Review a payment document (admin)
+mutation {
+  reviewPaymentDocument(
+    input: { memberSubscriptionId: "123", approved: true }
+  ) {
+    id
+    paymentStatus
+  }
+}
+```
+
+### Grace Period & Overdue Detection
+
+Each membership type defines a `gracePeriodDays` (default: 30). A subscription is considered **overdue** when `today > startDate + gracePeriodDays` and `paymentStatus ≠ REVIEWED`.
+
+```graphql
+# Query overdue subscriptions (admin)
+query {
+  overdueSubscriptions {
+    member {
+      firstName
+      lastName
+    }
+    membershipType {
+      name
+    }
+    paymentStatus
+    dueDate
+    daysOverdue
+  }
+}
+
+# Query subscriptions pending payment review (admin)
+query {
+  pendingPaymentReviews {
+    id
+    member {
+      firstName
+      lastName
+    }
+    paymentStatus
+  }
+}
+```
+
+### Notification System
+
+The system defines a `NotificationService` interface with triggers for:
+
+- **Overdue payment detection** — daily cron job alerts admin about expired grace periods
+- **Payment document upload** — immediate admin notification when a member uploads proof
+- **Payment reminders** — recurring reminders for members with unpaid subscriptions
+- **Membership type publication** — notify active members when a new membership type goes live
+
+Phase 1 uses a logging-only mock implementation. Real email delivery can be added via `@Primary` or Spring profile without changing domain code.
+
+### Optimistic Locking
+
+All entities use JPA `@Version` (stored as `Short`) for optimistic locking, preventing lost updates in concurrent modification scenarios.
 
 ## Testing
 

@@ -2,6 +2,7 @@ scalar Date
 scalar DateTime
 scalar LocalTime
 scalar BigDecimal
+scalar Long
 
 # ============================================================
 # QUERIES
@@ -53,6 +54,17 @@ type Query {
   "Next upcoming SCHEDULED occurrence for a member"
   nextSessionForMember(memberId: ID!, sessionType: String): SessionOccurrence
 
+  "Sessions available to the authenticated member (Phase 1: explicit memberId)"
+  mySessions(
+    memberId: ID!
+    from: Date
+    to: Date
+    sessionType: String
+  ): [SessionOccurrence!]!
+
+  "Next upcoming SCHEDULED occurrence for the authenticated member (Phase 1: explicit memberId)"
+  myNextSession(memberId: ID!, sessionType: String): SessionOccurrence
+
   "List all trainers"
   trainers: [Trainer!]!
 
@@ -75,6 +87,22 @@ type Query {
     from: Date!
     to: Date!
   ): TrainerPaymentSummary!
+
+  "Trainer payment summary for the authenticated trainer (Phase 1: explicit trainerId)"
+  myTrainerPaymentSummary(
+    trainerId: ID!
+    from: Date!
+    to: Date!
+  ): TrainerPaymentSummary!
+
+  "Subscriptions past their grace period with paymentStatus != REVIEWED (admin-only)"
+  overdueSubscriptions: [OverdueSubscription!]!
+
+  "Subscriptions with paymentStatus = IN_REVIEW — documents awaiting admin verification"
+  pendingPaymentReviews: [MemberSubscription!]!
+
+  "List all payment documents for a subscription"
+  paymentDocuments(memberSubscriptionId: ID!): [PaymentDocument!]!
 }
 
 # ============================================================
@@ -160,6 +188,12 @@ type Mutation {
 
   "Resubmit corrected hours after rejection"
   resubmitTrainerLog(input: ResubmitTrainerLogInput!): TrainerLog!
+
+  "Member uploads a payment proof PDF for a subscription (NOT_PAID -> IN_REVIEW)"
+  uploadPaymentDocument(input: UploadPaymentDocumentInput!): PaymentDocument!
+
+  "Admin verifies or rejects a payment document (IN_REVIEW -> REVIEWED or NOT_PAID)"
+  reviewPaymentDocument(input: ReviewPaymentDocumentInput!): MemberSubscription!
 }
 
 # ============================================================
@@ -193,6 +227,7 @@ type MembershipType {
   unit: String!
   status: String!
   proratedMode: Boolean!
+  gracePeriodDays: Int!
   sessions: [Session!]!
 }
 
@@ -203,6 +238,7 @@ type MemberSubscription {
   startDate: Date!
   endDate: Date!
   agreedPrice: BigDecimal!
+  paymentStatus: String!
   active: Boolean!
 }
 
@@ -299,6 +335,26 @@ type DeleteMemberResult {
   fieldsAnonymized: [String!]!
 }
 
+type PaymentDocument {
+  id: ID!
+  memberSubscription: MemberSubscription!
+  fileName: String!
+  contentType: String!
+  storagePath: String!
+  fileSize: Long!
+  uploadedAt: DateTime!
+  notes: String
+}
+
+type OverdueSubscription {
+  member: Member!
+  subscription: MemberSubscription!
+  membershipType: MembershipType!
+  paymentStatus: String!
+  dueDate: Date!
+  daysOverdue: Int!
+}
+
 # ============================================================
 # INPUT TYPES
 # ============================================================
@@ -341,6 +397,7 @@ input CreateMembershipTypeInput {
   duration: Int!
   unit: String!
   proratedMode: Boolean
+  gracePeriodDays: Int
 }
 
 input RecordPaymentInput {
@@ -414,4 +471,17 @@ input ResubmitTrainerLogInput {
   id: ID!
   hoursWorked: BigDecimal!
   notes: String
+}
+
+input UploadPaymentDocumentInput {
+  memberSubscriptionId: ID!
+  fileName: String!
+  fileContent: String!
+  notes: String
+}
+
+input ReviewPaymentDocumentInput {
+  memberSubscriptionId: ID!
+  approved: Boolean!
+  reason: String
 }

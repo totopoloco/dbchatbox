@@ -1,15 +1,17 @@
 package at.mavila.dbchatbox.infrastructure.web.graphql;
 
-import graphql.scalars.ExtendedScalars;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.graphql.execution.RuntimeWiringConfigurer;
+
+import graphql.scalars.ExtendedScalars;
 
 /**
  * Configuration for custom GraphQL scalar types.
  *
  * <p>
- * Registers extended scalar types (Date, DateTime, LocalTime, BigDecimal) from the graphql-java-extended-scalars
+ * Registers extended scalar types (Date, DateTime, LocalTime, BigDecimal) from
+ * the graphql-java-extended-scalars
  * library so they can be used in the GraphQL schema.
  * </p>
  *
@@ -21,11 +23,13 @@ public class ScalarConfiguration {
   /**
    * Configures the GraphQL runtime wiring with extended scalar types.
    *
-   * @return a {@link RuntimeWiringConfigurer} that registers Date, DateTime, LocalTime, and BigDecimal scalars
+   * @return a {@link RuntimeWiringConfigurer} that registers Date, DateTime,
+   *         LocalTime, and BigDecimal scalars
    */
   @Bean
   public RuntimeWiringConfigurer runtimeWiringConfigurer() {
     return wiringBuilder -> wiringBuilder.scalar(ExtendedScalars.Date).scalar(ExtendedScalars.DateTime)
-        .scalar(ExtendedScalars.LocalTime).scalar(ExtendedScalars.GraphQLBigDecimal);
+        .scalar(ExtendedScalars.LocalTime).scalar(ExtendedScalars.GraphQLBigDecimal)
+        .scalar(ExtendedScalars.GraphQLLong);
   }
 }

@@ -26,7 +26,8 @@ import at.mavila.dbchatbox.domain.support.CommandValidator;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Domain service for member subscriptions — subscribe, renew, end, and proration.
+ * Domain service for member subscriptions — subscribe, renew, end, and
+ * proration.
  *
  * @since 2026-04-09
  */
@@ -45,16 +46,16 @@ public class MemberSubscriptionService {
    * Subscribes a member to a membership type.
    *
    * @param command
-   *                  the subscribe command
+   *                the subscribe command
    * @return the created subscription
    * @throws MemberNotFoundException
-   *                                     if the member does not exist
+   *                                   if the member does not exist
    * @throws MemberDeletedException
-   *                                     if the member is DELETED
+   *                                   if the member is DELETED
    * @throws ResourceNotFoundException
-   *                                     if the membership type does not exist
+   *                                   if the membership type does not exist
    * @throws InvalidOperationException
-   *                                     if the membership type is not ACTIVE
+   *                                   if the membership type is not ACTIVE
    */
   public MemberSubscription subscribeMember(final SubscribeMemberCommand command) {
     commandValidator.validate(command);
@@ -80,7 +81,8 @@ public class MemberSubscriptionService {
         computedEndDate);
 
     final MemberSubscription subscription = MemberSubscription.builder().member(member).membershipType(type)
-        .startDate(command.startDate()).endDate(computedEndDate).agreedPrice(computedPrice).build();
+        .startDate(command.startDate()).endDate(computedEndDate).agreedPrice(computedPrice)
+        .paymentStatus(SubscriptionPaymentStatus.NOT_PAID).build();
 
     return subscriptionRepository.save(subscription);
   }
@@ -89,10 +91,10 @@ public class MemberSubscriptionService {
    * Ends a subscription early by setting endDate to today.
    *
    * @param id
-   *             the subscription ID
+   *           the subscription ID
    * @return the updated subscription
    * @throws ResourceNotFoundException
-   *                                     if the subscription does not exist
+   *                                   if the subscription does not exist
    */
   public MemberSubscription endSubscription(final Long id) {
     final MemberSubscription subscription = subscriptionRepository.findById(id)
@@ -111,9 +113,9 @@ public class MemberSubscriptionService {
    * Lists subscriptions for a member, optionally filtering by active state.
    *
    * @param memberId
-   *                     the member ID
+   *                   the member ID
    * @param activeOnly
-   *                     true to return only active subscriptions (endDate >= today)
+   *                   true to return only active subscriptions (endDate >= today)
    * @return matching subscriptions
    */
   @Transactional(readOnly = true)
@@ -124,12 +126,37 @@ public class MemberSubscriptionService {
     return subscriptionRepository.findByMemberId(memberId);
   }
 
+  /**
+   * Finds subscriptions past their grace period with payment status not REVIEWED.
+   *
+   * @return overdue subscriptions
+   */
+  @Transactional(readOnly = true)
+  public List<MemberSubscription> findOverdueSubscriptions() {
+    final LocalDate today = LocalDate.now();
+    return subscriptionRepository.findOverdueCandidates(today, SubscriptionPaymentStatus.REVIEWED)
+        .stream()
+        .filter(sub -> sub.getStartDate().plusDays(sub.getMembershipType().getGracePeriodDays()).isBefore(today))
+        .toList();
+  }
+
+  /**
+   * Finds subscriptions with payment status IN_REVIEW (awaiting admin
+   * verification).
+   *
+   * @return subscriptions pending payment review
+   */
+  @Transactional(readOnly = true)
+  public List<MemberSubscription> findPendingPaymentReviews() {
+    return subscriptionRepository.findByPaymentStatus(SubscriptionPaymentStatus.IN_REVIEW);
+  }
+
   private LocalDate computeEndDate(final LocalDate startDate, final MembershipType type) {
     return switch (type.getUnit()) {
-    case DAYS -> startDate.plusDays(type.getDuration());
-    case WEEKS -> startDate.plusWeeks(type.getDuration());
-    case MONTHS -> startDate.plusMonths(type.getDuration());
-    case YEARS -> startDate.plusYears(type.getDuration());
+      case DAYS -> startDate.plusDays(type.getDuration());
+      case WEEKS -> startDate.plusWeeks(type.getDuration());
+      case MONTHS -> startDate.plusMonths(type.getDuration());
+      case YEARS -> startDate.plusYears(type.getDuration());
     };
   }
 

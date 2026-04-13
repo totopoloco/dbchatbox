@@ -1,5 +1,7 @@
 package at.mavila.dbchatbox.domain.club.training;
 
+import java.time.LocalDate;
+
 import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,19 +13,19 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDate;
-
 /**
  * A concrete, date-specific instance of a {@link Session}.
  *
  * <p>
- * While {@code Session} defines the recurring weekly template, {@code SessionOccurrence} materializes each individual
+ * While {@code Session} defines the recurring weekly template,
+ * {@code SessionOccurrence} materializes each individual
  * date on which the session actually takes place.
  * </p>
  *
@@ -55,4 +57,8 @@ public class SessionOccurrence {
 
   @Column(length = 500)
   private String notes;
+
+  @Version
+  @Column(nullable = false)
+  private Short version;
 }

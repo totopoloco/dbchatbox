@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,7 +23,8 @@ import lombok.Setter;
  * Stores compensation and workflow configuration for a trainer.
  *
  * <p>
- * One-to-one with {@link Trainer}. Separates admin-managed settings (hourly rate, payment mode, auto-approve) from the
+ * One-to-one with {@link Trainer}. Separates admin-managed settings (hourly
+ * rate, payment mode, auto-approve) from the
  * trainer's identity.
  * </p>
  *
@@ -55,4 +57,8 @@ public class TrainerSettings {
   @Column(name = "auto_approve_hours", nullable = false)
   @Builder.Default
   private Boolean autoApproveHours = false;
+
+  @Version
+  @Column(nullable = false)
+  private Short version;
 }

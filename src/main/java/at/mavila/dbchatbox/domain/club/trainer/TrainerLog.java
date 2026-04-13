@@ -1,5 +1,8 @@
 package at.mavila.dbchatbox.domain.club.trainer;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
 import at.mavila.dbchatbox.domain.club.training.SessionOccurrence;
 import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
@@ -12,20 +15,19 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-
 /**
  * Records that a trainer conducted a specific session on a specific date.
  *
  * <p>
- * Linked to a {@link SessionOccurrence} (which provides the date) and a {@link Trainer}. Follows an approval workflow:
+ * Linked to a {@link SessionOccurrence} (which provides the date) and a
+ * {@link Trainer}. Follows an approval workflow:
  * PENDING → APPROVED or REJECTED. APPROVED is terminal.
  * </p>
  *
@@ -71,4 +73,8 @@ public class TrainerLog {
 
   @Column(length = 500)
   private String notes;
+
+  @Version
+  @Column(nullable = false)
+  private Short version;
 }

@@ -31,43 +31,71 @@ public class MembershipController {
 
   // ==================== QUERIES ====================
 
+  /**
+   * Returns all membership types, optionally filtered by status.
+   *
+   * @param status optional status filter (e.g. {@code ACTIVE}, {@code DRAFT})
+   * @return list of matching membership types
+   */
   @QueryMapping
-  public List<MembershipType> membershipTypes(@Argument
-  final String status) {
+  public List<MembershipType> membershipTypes(@Argument final String status) {
     final MembershipTypeStatus statusEnum = nonNull(status) ? MembershipTypeStatus.valueOf(status) : null;
     return membershipTypeService.findAll(statusEnum);
   }
 
   // ==================== MUTATIONS ====================
 
+  /**
+   * Creates a new membership type in {@code DRAFT} status.
+   *
+   * @param input the creation input
+   * @return the created membership type
+   */
   @MutationMapping
-  public MembershipType createMembershipType(@Argument
-  final Map<String, Object> input) {
+  public MembershipType createMembershipType(@Argument final Map<String, Object> input) {
     final var command = new CreateMembershipTypeCommand((String) input.get("name"), (String) input.get("description"),
         new BigDecimal(input.get("price").toString()), ((Number) input.get("duration")).intValue(),
         Unit.valueOf((String) input.get("unit")),
-        input.containsKey("proratedMode") ? (Boolean) input.get("proratedMode") : null);
+        input.containsKey("proratedMode") ? (Boolean) input.get("proratedMode") : null,
+        input.containsKey("gracePeriodDays") ? ((Number) input.get("gracePeriodDays")).intValue() : null);
     return membershipTypeService.create(command);
   }
 
+  /**
+   * Transitions a membership type to a new status.
+   *
+   * @param id     the membership type ID
+   * @param status the target status
+   * @return the updated membership type
+   */
   @MutationMapping
-  public MembershipType changeMembershipTypeStatus(@Argument
-  final Long id, @Argument
-  final String status) {
+  public MembershipType changeMembershipTypeStatus(@Argument final Long id, @Argument final String status) {
     return membershipTypeService.changeStatus(id, MembershipTypeStatus.valueOf(status));
   }
 
+  /**
+   * Links a session to a membership type.
+   *
+   * @param membershipTypeId the membership type ID
+   * @param sessionId        the session ID
+   * @return the updated membership type
+   */
   @MutationMapping
-  public MembershipType assignSessionToMembership(@Argument
-  final Long membershipTypeId, @Argument
-  final Long sessionId) {
+  public MembershipType assignSessionToMembership(@Argument final Long membershipTypeId,
+      @Argument final Long sessionId) {
     return membershipTypeService.assignSession(membershipTypeId, sessionId);
   }
 
+  /**
+   * Unlinks a session from a membership type.
+   *
+   * @param membershipTypeId the membership type ID
+   * @param sessionId        the session ID
+   * @return the updated membership type
+   */
   @MutationMapping
-  public MembershipType removeSessionFromMembership(@Argument
-  final Long membershipTypeId, @Argument
-  final Long sessionId) {
+  public MembershipType removeSessionFromMembership(@Argument final Long membershipTypeId,
+      @Argument final Long sessionId) {
     return membershipTypeService.removeSession(membershipTypeId, sessionId);
   }
 }
