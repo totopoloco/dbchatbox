@@ -103,6 +103,14 @@ type Query {
 
   "List all payment documents for a subscription"
   paymentDocuments(memberSubscriptionId: ID!): [PaymentDocument!]!
+
+  """
+  Submit a natural-language question about the club and receive a
+  synthesised answer. Internally the assistant calls one or more
+  read-only domain tools (members, subscriptions, payments, sessions,
+  trainer hours) and composes the final text from their results.
+  """
+  ask(input: AskInput!): AskResult!
 }
 
 # ============================================================
@@ -484,4 +492,64 @@ input ReviewPaymentDocumentInput {
   memberSubscriptionId: ID!
   approved: Boolean!
   reason: String
+}
+
+# ============================================================
+# CHATBOX — natural-language assistant
+# ============================================================
+
+"""
+Input for the ask query. The prompt is a free-form question in any language
+supported by the configured LLM (Anthropic Claude by default). Locale is an
+optional BCP-47 tag hint that biases the response language.
+"""
+input AskInput {
+  "The user's natural-language question. 1-2000 characters."
+  prompt: String!
+
+  "Optional BCP-47 locale tag (e.g. en-US, de-AT). Defaults to en-US if omitted."
+  locale: String
+}
+
+"""
+Synthesised answer plus metadata. The answer itself is plain text or light
+Markdown and is safe to render directly in a chat UI.
+"""
+type AskResult {
+  "Final natural-language answer produced by the LLM."
+  answer: String!
+
+  "Tools the LLM invoked while producing the answer. Empty list when the model answered directly."
+  toolCalls: [ToolCallSummary!]!
+
+  "Identifier of the model that produced the answer (e.g. claude-haiku-4-5-20251001)."
+  model: String!
+
+  "Provider-reported prompt tokens. Null when the provider does not expose usage."
+  promptTokens: Int
+
+  "Provider-reported completion tokens. Null when the provider does not expose usage."
+  completionTokens: Int
+
+  "End-to-end server latency in milliseconds (rate-limit check + LLM round-trip + tool calls)."
+  latencyMillis: Int!
+}
+
+"""
+Summary of one tool invocation. Phase 1 does not yet surface the per-call
+trace through the fluent ChatClient API, so this list is always empty — the
+type exists so the frontend can start consuming it once the trace is wired.
+"""
+type ToolCallSummary {
+  "Tool method name (e.g. outstandingPayments)."
+  name: String!
+
+  "JSON string of the arguments the LLM passed to the tool."
+  arguments: String!
+
+  "Tool execution time in milliseconds."
+  durationMillis: Int!
+
+  "Domain-exception message if the tool threw; null on success."
+  error: String
 }

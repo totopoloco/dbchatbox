@@ -33,38 +33,47 @@ This is a **GraphQL-only** club management system built with DDD layering. There
 
 ```
 src/main/java/at/mavila/dbchatbox/
-├── domain/club/           # Business logic, entities, repositories, services
-│   ├── member/            # Member + GDPR anonymization
-│   ├── membership/        # Subscription lifecycle
-│   ├── trainer/           # Trainer entity + compensation settings
-│   ├── training/          # Session + recurring SessionOccurrence
-│   ├── payment/           # Payment tracking
-│   └── exception/         # Domain exceptions
-├── application/           # AlgorithmService — delegates to domain services, handles defaulting
+├── domain/
+│   ├── club/
+│   │   ├── exception/      # Domain exceptions (MemberNotFound, DuplicateEmail, InvalidStatusTransition, ...)
+│   │   ├── member/         # Member + status history + GDPR anonymization
+│   │   ├── membership/     # MembershipType + grace period
+│   │   ├── notification/   # NotificationService interface (logging-only mock in Phase 1)
+│   │   ├── payment/        # Payment + PaymentDocument upload/review workflow
+│   │   ├── subscription/   # MemberSubscription + SubscriptionPaymentStatus
+│   │   ├── trainer/        # Trainer + TrainerSettings + TrainerLog
+│   │   └── training/       # Session + SessionOccurrence
+│   ├── chatbox/            # Natural-language assistant (Spring AI)
+│   │   ├── exception/      # ChatRateLimitExceeded, ChatProviderUnavailable
+│   │   └── tools/          # @Tool-annotated read wrappers over domain services
+│   └── support/            # TSID generator, CommandValidator (Jakarta Bean Validation helper)
 └── infrastructure/
-    ├── web/graphql/       # GraphQL controllers (@QueryMapping / @MutationMapping)
-    └── scheduling/        # GDPR purge job (runs daily at 02:00)
+    ├── ai/                 # ChatClient configuration + system prompt + Clock bean
+    ├── web/graphql/        # Per-entity controllers + ChatAssistantController, GraphQlExceptionAdvice, ScalarConfiguration
+    └── scheduling/         # GdprPurgeJob (daily 02:00)
 ```
 
-**Request flow:** GraphQL controller → `AlgorithmService` (application layer) → domain service → JPA repository
+**Request flow:** GraphQL controller (`@QueryMapping` / `@MutationMapping` / `@SchemaMapping`) → domain service → JPA repository. There is no intermediate application-service layer — controllers depend on domain services directly.
 
 **Key files:**
 - `src/main/resources/graphql/schema.graphqls` — all queries, mutations, scalars, and types
-- `src/main/resources/application.properties` — GDPR cron schedule and retention period (30 days)
-- `src/main/resources/application-dev.properties` — H2 DB + H2 console (dev profile)
-- `src/main/resources/db/migration/` — Flyway versioned migrations (V1, V2)
+- `src/main/resources/application.properties` — GDPR cron (`app.gdpr.purge-cron`, `app.gdpr.retention-days=30`), payment/notification settings
+- `src/main/resources/application-{dev,test,prod}.properties` — profile-specific config
+- `src/main/resources/db/migration/V1..V5_*.sql` — Flyway versioned migrations (`ddl-auto=validate`, so schema changes require a new migration)
+- `src/specs/club/ClubManagement.md` — product spec driving the feature set
 
-**Tech stack:** Java 25 · Spring Boot 4.0.5 · Spring for GraphQL · JPA/Hibernate 7 · Flyway · H2 (dev/test) · PostgreSQL 16 (prod) · Lombok · TSID IDs · graphql-java-extended-scalars · Jakarta Bean Validation · PIT mutation testing
+**Tech stack:** Java 25 · Spring Boot 4.0.5 · Spring for GraphQL · JPA/Hibernate 7 · Flyway · H2 (dev/test) · PostgreSQL 16 (prod) · Lombok · TSID IDs · graphql-java-extended-scalars · Jakarta Bean Validation · Spring AI 2.0.0-M3 (Anthropic) for the chatbox · PIT mutation testing
+
+All entities use JPA `@Version` (stored as `Short`) for optimistic locking.
 
 ## Adding a New Feature (Spec-Driven Pipeline)
 
 Specs live in `src/specs/<category>/`. When implementing a spec, touch these layers in order:
 
-1. **Domain** — `@Component` service in `domain/<category>/`, parameter `record` with Jakarta Bean Validation annotations, custom exception in `exception/` sub-package if needed
-2. **Application** — add delegate method to `AlgorithmService`; handle null defaulting here, not in the domain
-3. **Infrastructure** — add query/type to `schema.graphqls`, add `@QueryMapping` to `AlgorithmController`, add exception handler to `GraphQLExceptionHandler` if needed
-4. **Tests** — domain test (`@SpringBootTest`, AssertJ), nested class in `AlgorithmServiceTest`, GraphQL integration test via `ExecutionGraphQlServiceTester`
-5. **Docs** — Javadoc on every new/modified class and public method, update `README.md`
+1. **Domain** — `@Service`/`@Component` in `domain/club/<category>/`, command `record` with Jakarta Bean Validation annotations, custom exception in `domain/club/exception/` if needed. If the schema changes, add a Flyway migration (next `V{n}__*.sql`).
+2. **Infrastructure** — add type/query/mutation to `schema.graphqls`, add `@QueryMapping`/`@MutationMapping` to the matching per-entity controller (or create a new `XController`), add handler to `GraphQlExceptionAdvice` if the exception needs a dedicated GraphQL error mapping.
+3. **Tests** — domain test (`@SpringBootTest`, AssertJ), GraphQL integration test via `ExecutionGraphQlServiceTester` with raw query documents.
+4. **Docs** — Javadoc on every new/modified class and public method, update `README.md` if user-visible behavior changes.
 
 ## Coding Conventions
 

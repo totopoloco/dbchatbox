@@ -10,6 +10,7 @@ A GraphQL-based club management application built with Spring Boot 4 and Java 25
 - **H2** (dev/test) / **PostgreSQL 16** (production)
 - **TSID** for entity ID generation
 - **Lombok**, **Jakarta Bean Validation**
+- **Spring AI 2.0** with **Anthropic Claude** for the natural-language chatbox
 
 ## Getting Started
 
@@ -17,6 +18,7 @@ A GraphQL-based club management application built with Spring Boot 4 and Java 25
 
 - JDK 25+
 - PostgreSQL 16+ (production only; dev/test use embedded H2)
+- Anthropic API key (only required to use the chatbox feature — see [Chatbox](#chatbox-natural-language-assistant))
 
 ### Build & Run
 
@@ -27,7 +29,10 @@ A GraphQL-based club management application built with Spring Boot 4 and Java 25
 # Build with tests
 ./gradlew build
 
-# Run (dev profile, H2 in-memory)
+# Run (dev profile, H2 in-memory). The chatbox expects ANTHROPIC_API_KEY in
+# the environment; without it the ask query returns a provider-unavailable
+# error but the rest of the API still works.
+export ANTHROPIC_API_KEY=sk-ant-...
 ./gradlew bootRun
 ```
 
@@ -268,6 +273,131 @@ Phase 1 uses a logging-only mock implementation. Real email delivery can be adde
 ### Optimistic Locking
 
 All entities use JPA `@Version` (stored as `Short`) for optimistic locking, preventing lost updates in concurrent modification scenarios.
+
+## Chatbox — Natural-Language Assistant
+
+A single GraphQL query — `ask(input: AskInput!): AskResult!` — accepts a free-form
+question in any language and returns a synthesised answer built from the
+existing read-only domain operations. Internally the assistant uses
+[Spring AI 2.0](https://spring.io/projects/spring-ai) (milestone M3) to call
+Anthropic Claude. Spec: [`src/specs/chatbox/Chatbox.md`](src/specs/chatbox/Chatbox.md).
+
+### How it works (high level)
+
+1. The client sends `ask(input: { prompt: "show me all members who haven't paid yet" })`.
+2. `ChatAssistantController` validates and hands off to `ChatAssistantService`.
+3. `ChatAssistantService` checks a per-hour global rate limit, then sends the
+   prompt to the LLM via Spring AI's `ChatClient`. The client was configured
+   at startup with the system prompt and the full tool catalog (every
+   `@Tool`-annotated method in `domain.chatbox.tools`).
+4. Spring AI drives the tool-calling loop internally: if the model requests a
+   tool, Spring AI dispatches the call to the matching Java method on the real
+   Spring bean (so `@Transactional`, validation, etc. apply), feeds the
+   JSON-serialised result back to the LLM, and continues until the model
+   emits its final text.
+5. The service returns an `AskResult` with the answer, the model id, token
+   usage reported by the provider, and end-to-end latency.
+
+No new business logic is introduced: the domain remains the single source of
+truth. The LLM only orchestrates.
+
+### Spring AI version
+
+The project uses **Spring AI 2.0.0-M3** — the first Spring AI line built on
+Spring Framework 7 / Spring Boot 4. Earlier versions (1.0.x, 1.1.x) were
+compiled against Framework 6 and fail at runtime on Boot 4 with
+`NoSuchMethodError`. The milestone repo is declared in `build.gradle`; once
+2.0 reaches GA the repo entry can be removed.
+
+### Setup
+
+Set your Anthropic API key before running:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+./gradlew bootRun
+```
+
+Copy `.env.example` to `.env` for a reusable local configuration. Switching
+providers (OpenAI, Ollama, Azure OpenAI, Bedrock, …) is a three-line change:
+
+1. Swap the Spring AI starter in `build.gradle`
+   (`spring-ai-starter-model-anthropic` → `spring-ai-starter-model-openai`, …).
+2. Change `spring.ai.model.chat` in `application.properties`.
+3. Set the matching `spring.ai.<provider>.*` properties (api key, model id, …).
+
+No Java code changes required — `ChatClient` is provider-agnostic.
+
+### Example: unpaid members
+
+```graphql
+query {
+  ask(input: {
+    prompt: "Show me all members who have not paid yet this period"
+  }) {
+    answer
+    model
+    latencyMillis
+    promptTokens
+    completionTokens
+  }
+}
+```
+
+Response (example):
+
+```json
+{
+  "data": {
+    "ask": {
+      "answer": "Three members currently have unpaid subscriptions:\n- Anna Müller — Gold Monthly, overdue 3 days\n- John Smith — Silver Monthly, within grace period\n- Lucas Weber — Training Only, IN_REVIEW",
+      "model": "claude-haiku-4-5-20251001",
+      "latencyMillis": 1104,
+      "promptTokens": 1820,
+      "completionTokens": 128
+    }
+  }
+}
+```
+
+### Available tools (Phase 1, read-only)
+
+| Tool class                | Methods                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------- |
+| `MemberQueryTools`        | `listMembers`, `memberById`, `memberStatusHistory`                                    |
+| `MembershipQueryTools`    | `listMembershipTypes`                                                                 |
+| `SubscriptionQueryTools`  | `subscriptionsForMember`, `overdueSubscriptions`, `pendingPaymentReviews`             |
+| `PaymentQueryTools`       | `paymentsForSubscription`, `paymentsForMember`, `outstandingPayments`                 |
+| `SessionQueryTools`       | `listSessions`, `sessionsForMember`, `nextSessionForMember`                           |
+| `TrainerQueryTools`       | `listTrainers`, `trainerHours`, `pendingTrainerLogs`, `trainerPaymentSummary`         |
+
+All tools are **read-only**. Mutating operations (creating members, recording
+payments, …) are **not** exposed to the LLM — they remain available only
+through the typed GraphQL API.
+
+### Configuration
+
+| Property                                       | Default                     | Purpose                                          |
+| ---------------------------------------------- | --------------------------- | ------------------------------------------------ |
+| `spring.ai.model.chat`                         | `anthropic`                 | Which Spring AI starter to activate              |
+| `spring.ai.anthropic.api-key`                  | (env `ANTHROPIC_API_KEY`)   | Anthropic API key                                |
+| `spring.ai.anthropic.chat.options.model`       | `claude-haiku-4-5-20251001` | Model id                                         |
+| `spring.ai.anthropic.chat.options.temperature` | `0.2`                       | LLM temperature (low = deterministic)            |
+| `spring.ai.anthropic.chat.options.max-tokens`  | `1024`                      | Per-call token cap                               |
+| `app.chatbox.enabled`                          | `true`                      | Master on/off switch                             |
+| `app.chatbox.rate-limit.requests-per-hour`     | `30`                        | Global sliding-window limit                      |
+
+### Current Phase 1 limitations
+
+- **No authentication** — there is no per-user identity, so the rate limit is
+  global across all callers. Phase 2 will add per-principal limits and role-gated
+  tool sets (see [Authorization](src/specs/chatbox/Chatbox.md#authorization)).
+- **No conversation memory** — each `ask` call is independent.
+- **No mutating tools** — the LLM cannot create, update, or delete data.
+- **Per-call tool trace** — the `toolCalls` field in `AskResult` is always an
+  empty list in Phase 1 (the internal trace is logged but not yet plumbed
+  through the GraphQL type). The schema field exists so the frontend can
+  start consuming it without a later schema change.
 
 ## Testing
 
