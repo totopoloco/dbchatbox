@@ -130,17 +130,26 @@ public class SessionOccurrenceService {
   /**
    * Finds occurrences available to a member through their active subscriptions.
    *
-   * @param memberId
-   *                   the member ID
-   * @param from
-   *                   start date
-   * @param to
-   *                   end date
+   * <p>
+   * {@code from} and {@code to} are <strong>optional</strong>: callers (the
+   * GraphQL controllers and the chatbox tool) treat null as "no lower / upper
+   * bound". The underlying JPQL uses {@code BETWEEN :from AND :to} which
+   * cannot bind null parameters, so we substitute wide sentinel dates here:
+   * {@code 1970-01-01} for an unbounded lower end and {@code 9999-12-31} for
+   * an unbounded upper end. Both fit comfortably inside the standard SQL
+   * {@code DATE} range supported by H2 and PostgreSQL.
+   * </p>
+   *
+   * @param memberId the member ID
+   * @param from     start date (inclusive); null means no lower bound
+   * @param to       end date (inclusive); null means no upper bound
    * @return matching occurrences
    */
   @Transactional(readOnly = true)
   public List<SessionOccurrence> findByMember(final Long memberId, final LocalDate from, final LocalDate to) {
-    return occurrenceRepository.findByMemberAndDateRange(memberId, from, to);
+    final LocalDate effectiveFrom = nonNull(from) ? from : LocalDate.of(1970, 1, 1);
+    final LocalDate effectiveTo = nonNull(to) ? to : LocalDate.of(9999, 12, 31);
+    return occurrenceRepository.findByMemberAndDateRange(memberId, effectiveFrom, effectiveTo);
   }
 
   /**
