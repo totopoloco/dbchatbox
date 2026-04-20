@@ -11,8 +11,8 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
+import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
 import at.mavila.dbchatbox.domain.club.member.Member;
-import at.mavila.dbchatbox.domain.club.member.MemberNotFoundException;
 import at.mavila.dbchatbox.domain.club.member.MemberService;
 import at.mavila.dbchatbox.domain.club.member.MemberStatusHistory;
 import at.mavila.dbchatbox.domain.club.member.Status;
