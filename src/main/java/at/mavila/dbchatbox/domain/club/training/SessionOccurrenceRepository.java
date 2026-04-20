@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -67,22 +69,38 @@ public interface SessionOccurrenceRepository extends JpaRepository<SessionOccurr
   boolean existsBySessionId(Long sessionId);
 
   /**
-   * Finds the next upcoming SCHEDULED occurrence for sessions available to a member.
+   * Finds upcoming SCHEDULED occurrences for sessions available to a member,
+   * ordered by date ascending. Use the {@link Pageable} argument to cap the
+   * result count — JPQL has no {@code LIMIT} clause, so the limit is applied
+   * via {@code setMaxResults} by Spring Data instead.
    *
-   * @param memberId
-   *                   the member ID
-   * @param today
-   *                   the current date
-   * @return the next upcoming occurrence, if any
+   * @param memberId the member ID
+   * @param today    the current date (also the lower bound)
+   * @param pageable used to limit the result set; e.g. {@code PageRequest.of(0, 1)}
+   * @return matching occurrences in ascending date order
    */
   @Query("SELECT so FROM SessionOccurrence so " + "WHERE so.session IN (" + "  SELECT DISTINCT s FROM Session s "
       + "  JOIN MembershipType mt ON s MEMBER OF mt.sessions "
       + "  JOIN MemberSubscription ms ON ms.membershipType = mt "
       + "  WHERE ms.member.id = :memberId AND ms.endDate >= :today"
-      + ") AND so.status = 'SCHEDULED' AND so.date >= :today " + "ORDER BY so.date ASC LIMIT 1")
-  Optional<SessionOccurrence> findNextForMember(@Param("memberId")
+      + ") AND so.status = 'SCHEDULED' AND so.date >= :today " + "ORDER BY so.date ASC")
+  List<SessionOccurrence> findUpcomingForMember(@Param("memberId")
   Long memberId, @Param("today")
-  LocalDate today);
+  LocalDate today, Pageable pageable);
+
+  /**
+   * Convenience wrapper around {@link #findUpcomingForMember} that returns
+   * the single next upcoming SCHEDULED occurrence. Implemented as a default
+   * method so callers keep an {@link Optional} return without the repository
+   * having to embed the row-limit in the query.
+   *
+   * @param memberId the member ID
+   * @param today    the current date
+   * @return the next upcoming occurrence, if any
+   */
+  default Optional<SessionOccurrence> findNextForMember(final Long memberId, final LocalDate today) {
+    return findUpcomingForMember(memberId, today, PageRequest.of(0, 1)).stream().findFirst();
+  }
 
   /**
    * Finds occurrences for sessions available to a member within a date range.
