@@ -1,0 +1,39 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot (dev)",
+            "request": "launch",
+            "mainClass": "at.mavila.dbchatbox.DbchatboxApplication",
+            "projectName": "dbchatbox",
+            "args": "--spring.profiles.active=dev",
+            "envFile": "${workspaceFolder}/.env",
+            "vmArgs": "-Xmx512m"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot - Remote Debug (port 5005)",
+            "request": "attach",
+            "hostName": "localhost",
+            "port": 5005,
+            "projectName": "dbchatbox"
+        },
+        {
+            "type": "java",
+            "name": "Current Test File",
+            "request": "launch",
+            "mainClass": "${file}",
+            "projectName": "dbchatbox"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Spring Boot + Remote Debug",
+            "configurations": [
+                "Spring Boot (dev)",
+                "Spring Boot - Remote Debug (port 5005)"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,32 @@
+{
+    "recommendations": [
+        // Java & Spring
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-boot-dev-pack",
+        "vscjava.vscode-spring-initializr",
+        "vscjava.vscode-spring-boot-dashboard",
+        "Pivotal.vscode-spring-boot",
+        "vscjava.vscode-gradle",
+        "redhat.java",
+        "vscjava.vscode-java-debug",
+        "vscjava.vscode-java-test",
+        "vscjava.vscode-java-dependency",
+        "vscjava.vscode-maven",
+        "vscjava.vscode-lombok",
+        "madhavd1.javadoc-tools",
+        // Code quality
+        "EditorConfig.EditorConfig",
+        "esbenp.prettier-vscode",
+        "streetsidesoftware.code-spell-checker",
+        "codescene.codescene-vscode",
+        "sonarsource.sonarlint-vscode",
+        "yashar-zolmajdi.graphql-complexity-vscode",
+        // Git
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        // Utilities
+        "formulahendry.code-runner",
+        "k--kato.intellij-idea-keybindings",
+        "sureshnettur.jsonutil"
+    ]
+}

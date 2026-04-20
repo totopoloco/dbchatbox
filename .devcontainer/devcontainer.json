@@ -36,6 +36,15 @@
         "sonarsource.sonarlint-vscode"
       ],
       "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "/bin/bash",
+            "args": [
+              "-l"
+            ]
+          }
+        },
         "java.jdt.ls.java.home": "/opt/java/openjdk",
         "java.configuration.updateBuildConfiguration": "automatic",
         "java.compile.nullAnalysis.mode": "automatic",
