@@ -48,8 +48,30 @@ RUN chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
 # Switch to non-root user
 USER $USERNAME
 
-# Initialise Starship in bash
+# Initialise Starship in bash and configure terminal colors
 RUN echo '' >> ~/.bashrc \
+  && echo '# 256-color terminal' >> ~/.bashrc \
+  && echo 'export TERM=xterm-256color' >> ~/.bashrc \
+  && echo '' >> ~/.bashrc \
+  && echo '# Colored output aliases' >> ~/.bashrc \
+  && echo 'alias ls="ls --color=auto"' >> ~/.bashrc \
+  && echo 'alias ll="ls --color=auto -lh"' >> ~/.bashrc \
+  && echo 'alias la="ls --color=auto -lha"' >> ~/.bashrc \
+  && echo 'alias grep="grep --color=auto"' >> ~/.bashrc \
+  && echo 'alias egrep="egrep --color=auto"' >> ~/.bashrc \
+  && echo 'alias fgrep="fgrep --color=auto"' >> ~/.bashrc \
+  && echo 'alias diff="diff --color=auto"' >> ~/.bashrc \
+  && echo 'alias ip="ip --color=auto"' >> ~/.bashrc \
+  && echo '' >> ~/.bashrc \
+  && echo '# LS colors (GNU dircolors)' >> ~/.bashrc \
+  && echo 'eval "$(dircolors -b)"' >> ~/.bashrc \
+  && echo '' >> ~/.bashrc \
+  && echo '# Git colors' >> ~/.bashrc \
+  && echo 'git config --global color.ui auto' >> ~/.bashrc \
+  && echo 'git config --global color.branch auto' >> ~/.bashrc \
+  && echo 'git config --global color.diff auto' >> ~/.bashrc \
+  && echo 'git config --global color.status auto' >> ~/.bashrc \
+  && echo '' >> ~/.bashrc \
   && echo '# Starship prompt' >> ~/.bashrc \
   && echo 'eval "$(starship init bash)"' >> ~/.bashrc
 

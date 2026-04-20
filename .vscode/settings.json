@@ -4,14 +4,14 @@
   "java.compile.nullAnalysis.mode": "automatic",
   "java.autobuild.enabled": true,
   "spring-boot.ls.java.home": "/opt/java/openjdk",
-  "window.zoomLevel": 1.1,
+  "window.zoomLevel": 1.05,
   "editor.fontFamily": "'JetBrains Mono', 'Cascadia Code', 'Fira Code', Menlo, monospace",
-  "editor.fontSize": 12,
+  "editor.fontSize": 12.5,
   "editor.lineHeight": 22,
   "editor.fontLigatures": true,
   "editor.fontWeight": "400",
   "terminal.integrated.fontFamily": "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
-  "terminal.integrated.fontSize": 12,
+  "terminal.integrated.fontSize": 13.4,
   "terminal.integrated.lineHeight": 1.3,
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
@@ -34,8 +34,34 @@
       "path": "/bin/bash",
       "args": [
         "-l"
-      ]
+      ],
+      "env": {
+        "TERM": "xterm-256color",
+        "COLORTERM": "truecolor"
+      }
     }
+  },
+  "workbench.colorCustomizations": {
+    "terminal.background": "#0D1117",
+    "terminal.foreground": "#C9D1D9",
+    "terminal.ansiBlack": "#161B22",
+    "terminal.ansiRed": "#FF7B72",
+    "terminal.ansiGreen": "#3FB950",
+    "terminal.ansiYellow": "#D29922",
+    "terminal.ansiBlue": "#58A6FF",
+    "terminal.ansiMagenta": "#BC8CFF",
+    "terminal.ansiCyan": "#39C5CF",
+    "terminal.ansiWhite": "#B1BAC4",
+    "terminal.ansiBrightBlack": "#6E7681",
+    "terminal.ansiBrightRed": "#FFA198",
+    "terminal.ansiBrightGreen": "#56D364",
+    "terminal.ansiBrightYellow": "#E3B341",
+    "terminal.ansiBrightBlue": "#79C0FF",
+    "terminal.ansiBrightMagenta": "#D2A8FF",
+    "terminal.ansiBrightCyan": "#56D4DD",
+    "terminal.ansiBrightWhite": "#F0F6FC",
+    "terminal.selectionBackground": "#264F78",
+    "terminalCursor.foreground": "#58A6FF"
   },
   "gradle.nestedProjects": true,
   "java.test.config": {
