@@ -14,7 +14,8 @@ import lombok.RequiredArgsConstructor;
  * Very simple global rate limiter for the chatbox.
  *
  * <p>
- * <strong>Design note — Phase 1:</strong> no authentication exists yet, so there
+ * <strong>Design note — Phase 1:</strong> no authentication exists yet, so
+ * there
  * is no per-caller identity. We therefore apply a single <em>global</em>
  * sliding-window limit across all callers. When authentication is introduced
  * in Phase 2, this class can be replaced by a per-principal limiter (Bucket4j,
@@ -60,16 +61,41 @@ public class ChatRateLimiter {
     final long windowStart = now - Duration.ofHours(1).toMillis();
     final int limit = properties.getRateLimit().getRequestsPerHour();
 
-    synchronized (requestTimestamps) {
-      while (!requestTimestamps.isEmpty() && requestTimestamps.peekFirst() < windowStart) {
-        requestTimestamps.pollFirst();
+    synchronized (this.requestTimestamps) {
+
+      // Evict expired timestamps from the head of the deque until either the
+      // deque is empty or the oldest timestamp falls within the current window.
+      while (isOldestTimestampExpired(windowStart)) {
+        this.requestTimestamps.pollFirst();
       }
-      if (requestTimestamps.size() >= limit) {
+
+      // If the deque size is below the limit, accept the request and record its
+      // timestamp at the tail. Otherwise, reject with an exception.
+      if (this.requestTimestamps.size() >= limit) {
         throw new ChatRateLimitExceededException(
             "Rate limit exceeded: %d requests per hour.".formatted(limit));
       }
-      requestTimestamps.addLast(now);
+
+      // Record the new request's timestamp at the tail of the deque.
+      // So the deque looks like this: [oldest, ..., newest], and we evict from the
+      // head and add to the tail.
+      this.requestTimestamps.addLast(now);
     }
+  }
+
+  /**
+   * Returns {@code true} when the deque is non-empty and its oldest entry
+   * pre-dates {@code windowStart}, meaning that entry has left the sliding
+   * window and should be evicted.
+   *
+   * @param windowStart epoch-millisecond timestamp marking the beginning of
+   *                    the current window (typically {@code now − 1 hour})
+   * @return {@code true} if the oldest timestamp has expired and must be
+   *         removed; {@code false} if the deque is empty or the oldest entry
+   *         still falls within the window
+   */
+  private boolean isOldestTimestampExpired(final long windowStart) {
+    return !this.requestTimestamps.isEmpty() && (this.requestTimestamps.peekFirst() < windowStart);
   }
 
   /**
@@ -78,8 +104,8 @@ public class ChatRateLimiter {
    * never call this.
    */
   public void reset() {
-    synchronized (requestTimestamps) {
-      requestTimestamps.clear();
+    synchronized (this.requestTimestamps) {
+      this.requestTimestamps.clear();
     }
   }
 }
