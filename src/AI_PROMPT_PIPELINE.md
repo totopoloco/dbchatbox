@@ -8,16 +8,16 @@
 
 ## Project Context
 
-| Aspect               | Value                                                                                                                  |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Language**         | Java 25 (toolchain)                                                                                                    |
-| **Framework**        | Spring Boot 4.0.5                                                                                                      |
-| **API style**        | GraphQL (Spring for GraphQL) — no REST controllers                                                                     |
-| **Build tool**       | Gradle (Groovy DSL)                                                                                                    |
-| **Testing**          | JUnit 5 + AssertJ + `ExecutionGraphQlServiceTester`                                                                    |
-| **Libraries**        | Lombok, Apache Commons Lang 3, graphql-java-extended-scalars, spring-boot-starter-validation (Jakarta Bean Validation) |
-| **Mutation testing** | Pitest                                                                                                                 |
-| **Base package**     | `at.mavila.dbchatbox`                                                                                                  |
+| Aspect               | Value                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Language**         | Java 25 (toolchain)                                                                                                                              |
+| **Framework**        | Spring Boot 4.0.5                                                                                                                                |
+| **API style**        | GraphQL (Spring for GraphQL) — no REST controllers                                                                                               |
+| **Build tool**       | Gradle (Groovy DSL)                                                                                                                              |
+| **Testing**          | JUnit 5 + AssertJ + `ExecutionGraphQlServiceTester`                                                                                              |
+| **Libraries**        | Lombok, Apache Commons Lang 3, graphql-java-extended-scalars, spring-boot-starter-validation (Jakarta Bean Validation), spring-boot-starter-mail |
+| **Mutation testing** | Pitest                                                                                                                                           |
+| **Base package**     | `at.mavila.dbchatbox`                                                                                                                            |
 
 ---
 
@@ -423,6 +423,38 @@ public BigDecimal findRoot(List<BigDecimal> coefficients, BigDecimal initialGues
     BigDecimal epsilon, int maxIterations, int scale) { ... }
 ```
 
+#### Primitive Obsession in domain services
+
+Domain services that manage entities (CRUD, status changes, workflows) are especially prone to **Primitive Obsession** — passing multiple raw `String`, `Long`, `BigDecimal`, and `Boolean` arguments instead of grouping them into a typed command/input record.
+
+**Every public service method that accepts entity data must use a parameter record**, not individual primitives. This applies to create, update, submit, and any operation that carries more than 3 fields.
+
+```java
+// ✅ Good — command record groups related fields
+public record CreateMemberCommand(
+    String firstName,
+    String lastName,
+    String email,
+    String phoneNumber,
+    LocalDate memberSince,
+    LocalDate memberUntil
+) {}
+
+public Member createMember(final CreateMemberCommand command) { ... }
+public Member updateMember(final Long id, final UpdateMemberCommand command) { ... }
+
+// ❌ Bad — primitive parameters passed individually (Primitive Obsession)
+public Member createMember(final String firstName, final String lastName,
+    final String email, final String phoneNumber,
+    final LocalDate memberSince, final LocalDate memberUntil) { ... }
+```
+
+- Name command records descriptively: `Create<Entity>Command`, `Update<Entity>Command`, `Submit<Entity>Command`, or reuse GraphQL input types if they already model the same shape.
+- Place the record in the same domain package as the service.
+- This eliminates Primitive Obsession **and** Excess Number of Function Arguments in a single refactoring.
+- **Private helper methods** that need a subset of the command fields should accept the full record (or a focused sub-record) rather than unpacking individual primitives.
+- **Controller → Service boundary**: GraphQL controllers already receive structured input objects — pass them through (or map to domain command records) instead of destructuring into individual arguments.
+
 ### Method design & complexity
 
 - **Target a cyclomatic complexity (CC) ≤ 10** per method. CodeScene flags `Complex Method` when CC exceeds this threshold.
@@ -466,6 +498,83 @@ private void validateInputs(List<BigDecimal> coefficients, BigDecimal initialGue
     // 8+ branching checks all in one method
 }
 ```
+
+### Complex conditionals
+
+- **Decompose complex boolean expressions** into named predicate methods. CodeScene flags `Complex Conditional` when an `if` statement contains multiple compound conditions (`&&`, `||`).
+- Extract each meaningful condition into a `private` method with a descriptive name that reads as a domain predicate (e.g., `isWithinDateRange(...)`, `hasTrainerConflict(...)`, `isScheduled(...)`).
+- This improves readability, testability, and keeps cyclomatic complexity low.
+
+```java
+// ✅ Good — named predicates extracted from compound conditions
+if (isScheduled(occurrence) && isWithinDateRange(occurrence, from, to)) {
+    ...
+}
+
+private boolean isScheduled(final SessionOccurrence occurrence) {
+    return occurrence.getStatus() == SessionOccurrenceStatus.SCHEDULED;
+}
+
+private boolean isWithinDateRange(final SessionOccurrence occ,
+                                   final LocalDate from,
+                                   final LocalDate to) {
+    return !occ.getDate().isBefore(from) && !occ.getDate().isAfter(to);
+}
+
+// ❌ Bad — inlined compound condition (flagged as Complex Conditional)
+if (occurrence.getStatus() == SessionOccurrenceStatus.SCHEDULED
+    && !occurrence.getDate().isBefore(from)
+    && !occurrence.getDate().isAfter(to)) {
+    ...
+}
+```
+
+- When filtering collections, prefer composing predicates with stream `.filter()`:
+
+```java
+// ✅ Good — predicate composition in stream pipeline
+occurrences.stream()
+    .filter(this::isScheduled)
+    .filter(occ -> isWithinDateRange(occ, from, to))
+    .toList();
+```
+
+- **Negated compound conditions** (`if (!a && !b)`) are especially hard to read. Extract a positive predicate and negate it, or use De Morgan's law to simplify.
+- Apply the same rule to ternary expressions and `? :` chains with compound conditions.
+
+### Code duplication
+
+- **Extract shared logic into reusable private methods or injected collaborators.** CodeScene flags `Code Duplication` when structurally similar code blocks appear in multiple methods.
+- If two or more methods perform the same operation with minor variations (e.g., checking for time overlaps against different entity lists), extract the common pattern into a single parameterized helper.
+- When shared logic spans multiple services, extract it into a dedicated `@Component` collaborator.
+
+```java
+// ✅ Good — shared overlap check parameterized by entity list
+private boolean hasTimeOverlap(final List<Session> existingSessions,
+                                final LocalTime startTime,
+                                final LocalTime endTime) {
+    return existingSessions.stream()
+        .anyMatch(s -> s.getStartTime().isBefore(endTime)
+                    && s.getEndTime().isAfter(startTime));
+}
+
+// Called from both checks — no duplication
+checkOverlap(trainerSessions, startTime, endTime, "Trainer has a conflicting session");
+checkOverlap(locationSessions, startTime, endTime, "Location has a conflicting session");
+
+// ❌ Bad — identical overlap logic duplicated across methods
+private void checkTrainerOverlap(Long trainerId, DayOfWeek day,
+    LocalTime start, LocalTime end, String name) {
+    // overlap detection code
+}
+private void checkLocationOverlap(String location, DayOfWeek day,
+    LocalTime start, LocalTime end, String name) {
+    // same overlap detection code, copy-pasted
+}
+```
+
+- **Indicators of duplication**: Two methods with the same structure, same loop/filter logic, same exception type, differing only in which field they query or which error message they produce.
+- Fix by parameterizing the varying parts (entity list, error message) and keeping the shared algorithm in one place.
 
 ### Input validation
 

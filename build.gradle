@@ -14,8 +14,26 @@ java {
 	}
 }
 
+// Preserve parameter names at runtime so the chatbox ToolRegistry can
+// reflect on @ChatTool method parameters to build their JSON schema.
+tasks.withType(JavaCompile).configureEach {
+	options.compilerArgs << '-parameters'
+}
+
 repositories {
 	mavenCentral()
+	// Spring AI 2.0.x is at milestone (2.0.0-M3 released 2026-03-17). GA is expected
+	// later in the 2.x line. Once 2.0.x goes GA and the BOM version bumps to a
+	// stable release, the milestone repo can be removed.
+	maven { url 'https://repo.spring.io/milestone' }
+}
+
+// Spring AI 2.0 is the first line built on Spring Framework 7 / Spring Boot 4.
+// Earlier lines (1.0, 1.1) were compiled against Framework 6 and fail at runtime
+// on Boot 4 with NoSuchMethodError. Do NOT downgrade without re-verifying Boot 4
+// compatibility — see the Boot-4 migration notes on https://spring.io/blog.
+ext {
+	springAiVersion = '2.0.0-M3'
 }
 
 dependencies {
@@ -27,6 +45,20 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-flyway'
 	implementation 'org.apache.commons:commons-lang3'
 	implementation 'com.graphql-java:graphql-java-extended-scalars:22.0'
+	implementation 'com.github.f4b6a3:tsid-creator:5.2.6'
+
+	// ----------------------------------------------------------------------
+	// Spring AI — chatbox (natural-language assistant)
+	//
+	// The BOM pins the versions of every spring-ai-* artifact below. Exactly
+	// ONE chat-model starter should be on the classpath at a time: to swap
+	// Anthropic for OpenAI / Ollama / Azure, change the starter here plus
+	// `spring.ai.model.chat` and `spring.ai.<provider>.*` in application.properties.
+	// ----------------------------------------------------------------------
+	implementation platform("org.springframework.ai:spring-ai-bom:${springAiVersion}")
+	implementation 'org.springframework.ai:spring-ai-starter-model-anthropic'
+
+	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.h2database:h2'
 	runtimeOnly 'org.postgresql:postgresql'
@@ -34,7 +66,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-graphql-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-  testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'

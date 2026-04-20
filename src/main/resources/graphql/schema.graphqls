@@ -1,0 +1,555 @@
+scalar Date
+scalar DateTime
+scalar LocalTime
+scalar BigDecimal
+scalar Long
+
+# ============================================================
+# QUERIES
+# ============================================================
+type Query {
+  "List all members, optionally filtered by current status"
+  members(status: String): [Member!]!
+
+  "Get a single member by ID (includes current status)"
+  memberById(id: ID!): Member
+
+  "Full status audit trail for a member"
+  memberStatusHistory(memberId: ID!): [MemberStatusEntry!]!
+
+  "List subscriptions for a member, optionally filter by active state"
+  memberSubscriptions(memberId: ID!, active: Boolean): [MemberSubscription!]!
+
+  "List membership types, optionally filtered by status"
+  membershipTypes(status: String): [MembershipType!]!
+
+  "List all payments for a specific subscription"
+  paymentsBySubscription(memberSubscriptionId: ID!): [Payment!]!
+
+  "List all payments across all subscriptions for a member"
+  paymentsByMember(memberId: ID!): [Payment!]!
+
+  "Active subscriptions with unpaid dues"
+  outstandingPayments: [MemberPaymentStatus!]!
+
+  "List all sessions, optionally filtered by type"
+  sessions(sessionType: String): [Session!]!
+
+  "List occurrences for a session within a date range, optionally filtered by status"
+  sessionOccurrences(
+    sessionId: ID
+    from: Date
+    to: Date
+    status: String
+  ): [SessionOccurrence!]!
+
+  "Sessions available to a member via their active subscriptions"
+  sessionsByMember(
+    memberId: ID!
+    from: Date
+    to: Date
+    sessionType: String
+  ): [SessionOccurrence!]!
+
+  "Next upcoming SCHEDULED occurrence for a member"
+  nextSessionForMember(memberId: ID!, sessionType: String): SessionOccurrence
+
+  "Sessions available to the authenticated member (Phase 1: explicit memberId)"
+  mySessions(
+    memberId: ID!
+    from: Date
+    to: Date
+    sessionType: String
+  ): [SessionOccurrence!]!
+
+  "Next upcoming SCHEDULED occurrence for the authenticated member (Phase 1: explicit memberId)"
+  myNextSession(memberId: ID!, sessionType: String): SessionOccurrence
+
+  "List all trainers"
+  trainers: [Trainer!]!
+
+  "Trainers not assigned to any session overlapping the given day + time range"
+  availableTrainers(
+    dayOfWeek: String!
+    startTime: LocalTime!
+    endTime: LocalTime!
+  ): [Trainer!]!
+
+  "Total approved hours worked by a trainer in a date range"
+  trainerHours(trainerId: ID!, from: Date, to: Date): TrainerHoursSummary!
+
+  "Pending hour submissions; optionally filter by trainer"
+  pendingTrainerLogs(trainerId: ID): [TrainerLog!]!
+
+  "Trainer payment summary (approved hours x hourly rate) for a date range"
+  trainerPaymentSummary(
+    trainerId: ID!
+    from: Date!
+    to: Date!
+  ): TrainerPaymentSummary!
+
+  "Trainer payment summary for the authenticated trainer (Phase 1: explicit trainerId)"
+  myTrainerPaymentSummary(
+    trainerId: ID!
+    from: Date!
+    to: Date!
+  ): TrainerPaymentSummary!
+
+  "Subscriptions past their grace period with paymentStatus != REVIEWED (admin-only)"
+  overdueSubscriptions: [OverdueSubscription!]!
+
+  "Subscriptions with paymentStatus = IN_REVIEW — documents awaiting admin verification"
+  pendingPaymentReviews: [MemberSubscription!]!
+
+  "List all payment documents for a subscription"
+  paymentDocuments(memberSubscriptionId: ID!): [PaymentDocument!]!
+
+  """
+  Submit a natural-language question about the club and receive a
+  synthesised answer. Internally the assistant calls one or more
+  read-only domain tools (members, subscriptions, payments, sessions,
+  trainer hours) and composes the final text from their results.
+  """
+  ask(input: AskInput!): AskResult!
+}
+
+# ============================================================
+# MUTATIONS
+# ============================================================
+type Mutation {
+  "Register a new member (auto-creates ACTIVE status)"
+  createMember(input: CreateMemberInput!): Member!
+
+  "Update member details"
+  updateMember(id: ID!, input: UpdateMemberInput!): Member!
+
+  "Record a status transition with optional reason"
+  changeMemberStatus(input: ChangeMemberStatusInput!): MemberStatusEntry!
+
+  "GDPR erasure: anonymize personal data, end subscriptions"
+  deleteMember(id: ID!): DeleteMemberResult!
+
+  "Subscribe a member to a membership type"
+  subscribeMember(input: SubscribeMemberInput!): MemberSubscription!
+
+  "Early termination — sets endDate to today if still in the future"
+  endSubscription(id: ID!): MemberSubscription!
+
+  "Define a new membership type (starts as DRAFT)"
+  createMembershipType(input: CreateMembershipTypeInput!): MembershipType!
+
+  "Transition membership type status"
+  changeMembershipTypeStatus(id: ID!, status: String!): MembershipType!
+
+  "Link a session to a membership type"
+  assignSessionToMembership(
+    membershipTypeId: ID!
+    sessionId: ID!
+  ): MembershipType!
+
+  "Unlink a session from a membership type"
+  removeSessionFromMembership(
+    membershipTypeId: ID!
+    sessionId: ID!
+  ): MembershipType!
+
+  "Record a payment for a subscription"
+  recordPayment(input: RecordPaymentInput!): Payment!
+
+  "Create a recurring session (training or free game)"
+  createSession(input: CreateSessionInput!): Session!
+
+  "Bulk-create occurrences for a session over a date range"
+  createSessionOccurrences(
+    input: CreateSessionOccurrencesInput!
+  ): [SessionOccurrence!]!
+
+  "Cancel a specific occurrence"
+  cancelSessionOccurrence(id: ID!): SessionOccurrence!
+
+  "Mark a specific occurrence as completed"
+  completeSessionOccurrence(id: ID!): SessionOccurrence!
+
+  "Register a new trainer (also creates initial TrainerSettings)"
+  createTrainer(input: CreateTrainerInput!): Trainer!
+
+  "Update trainer contact details (name, email, phone)"
+  updateTrainer(id: ID!, input: UpdateTrainerInput!): Trainer!
+
+  "Update trainer compensation and workflow settings (admin-only)"
+  updateTrainerSettings(
+    trainerId: ID!
+    input: UpdateTrainerSettingsInput!
+  ): TrainerSettings!
+
+  "Admin directly logs hours (status set to APPROVED)"
+  logTrainerHours(input: LogTrainerHoursInput!): TrainerLog!
+
+  "Trainer submits hours (PENDING or auto-approved per trainer setting)"
+  submitTrainerHours(input: SubmitTrainerHoursInput!): TrainerLog!
+
+  "Approve a pending trainer log entry"
+  approveTrainerLog(id: ID!): TrainerLog!
+
+  "Reject a pending trainer log entry with a reason"
+  rejectTrainerLog(input: RejectTrainerLogInput!): TrainerLog!
+
+  "Resubmit corrected hours after rejection"
+  resubmitTrainerLog(input: ResubmitTrainerLogInput!): TrainerLog!
+
+  "Member uploads a payment proof PDF for a subscription (NOT_PAID -> IN_REVIEW)"
+  uploadPaymentDocument(input: UploadPaymentDocumentInput!): PaymentDocument!
+
+  "Admin verifies or rejects a payment document (IN_REVIEW -> REVIEWED or NOT_PAID)"
+  reviewPaymentDocument(input: ReviewPaymentDocumentInput!): MemberSubscription!
+}
+
+# ============================================================
+# TYPES
+# ============================================================
+type Member {
+  id: ID!
+  firstName: String!
+  lastName: String!
+  email: String!
+  phoneNumber: String
+  memberSince: Date!
+  memberUntil: Date
+  currentStatus: String!
+  subscriptions(active: Boolean): [MemberSubscription!]!
+}
+
+type MemberStatusEntry {
+  id: ID!
+  status: String!
+  changedAt: DateTime!
+  reason: String
+}
+
+type MembershipType {
+  id: ID!
+  name: String!
+  description: String
+  price: BigDecimal!
+  duration: Int!
+  unit: String!
+  status: String!
+  proratedMode: Boolean!
+  gracePeriodDays: Int!
+  sessions: [Session!]!
+}
+
+type MemberSubscription {
+  id: ID!
+  member: Member!
+  membershipType: MembershipType!
+  startDate: Date!
+  endDate: Date!
+  agreedPrice: BigDecimal!
+  paymentStatus: String!
+  active: Boolean!
+}
+
+type Payment {
+  id: ID!
+  memberSubscription: MemberSubscription!
+  amount: BigDecimal!
+  currency: String!
+  paymentDate: Date!
+  notes: String
+}
+
+type Session {
+  id: ID!
+  name: String!
+  sessionType: String!
+  dayOfWeek: String!
+  startTime: LocalTime!
+  endTime: LocalTime!
+  location: String!
+  trainer: Trainer
+}
+
+type SessionOccurrence {
+  id: ID!
+  session: Session!
+  date: Date!
+  status: String!
+  notes: String
+}
+
+type Trainer {
+  id: ID!
+  firstName: String!
+  lastName: String!
+  email: String!
+  phoneNumber: String
+  settings: TrainerSettings
+}
+
+type TrainerSettings {
+  id: ID!
+  hourlyRate: BigDecimal!
+  paymentMode: String!
+  autoApproveHours: Boolean!
+}
+
+type TrainerLog {
+  id: ID!
+  trainer: Trainer!
+  sessionOccurrence: SessionOccurrence!
+  hoursWorked: BigDecimal!
+  status: String!
+  submittedAt: DateTime!
+  reviewedAt: DateTime
+  rejectionReason: String
+  notes: String
+}
+
+type MemberPaymentStatus {
+  member: Member!
+  subscription: MemberSubscription!
+  membershipType: MembershipType!
+  amountDue: BigDecimal!
+  amountPaid: BigDecimal!
+  outstanding: BigDecimal!
+}
+
+type TrainerHoursSummary {
+  trainer: Trainer!
+  totalHours: BigDecimal!
+  sessionCount: Int!
+  totalOwed: BigDecimal!
+  from: Date!
+  to: Date!
+}
+
+type TrainerPaymentSummary {
+  trainer: Trainer!
+  from: Date!
+  to: Date!
+  approvedHours: BigDecimal!
+  approvedSessions: Int!
+  hourlyRate: BigDecimal!
+  totalOwed: BigDecimal!
+  paymentMode: String!
+  pendingHours: BigDecimal!
+  pendingSessions: Int!
+}
+
+type DeleteMemberResult {
+  memberId: ID!
+  anonymizedAt: DateTime!
+  fieldsAnonymized: [String!]!
+}
+
+type PaymentDocument {
+  id: ID!
+  memberSubscription: MemberSubscription!
+  fileName: String!
+  contentType: String!
+  storagePath: String!
+  fileSize: Long!
+  uploadedAt: DateTime!
+  notes: String
+}
+
+type OverdueSubscription {
+  member: Member!
+  subscription: MemberSubscription!
+  membershipType: MembershipType!
+  paymentStatus: String!
+  dueDate: Date!
+  daysOverdue: Int!
+}
+
+# ============================================================
+# INPUT TYPES
+# ============================================================
+input CreateMemberInput {
+  firstName: String!
+  lastName: String!
+  email: String!
+  phoneNumber: String
+  memberSince: Date!
+  memberUntil: Date
+}
+
+input UpdateMemberInput {
+  firstName: String
+  lastName: String
+  email: String
+  phoneNumber: String
+  memberSince: Date
+  memberUntil: Date
+}
+
+input ChangeMemberStatusInput {
+  memberId: ID!
+  status: String!
+  reason: String
+}
+
+input SubscribeMemberInput {
+  memberId: ID!
+  membershipTypeId: ID!
+  startDate: Date!
+  endDate: Date
+  agreedPrice: BigDecimal
+}
+
+input CreateMembershipTypeInput {
+  name: String!
+  description: String
+  price: BigDecimal!
+  duration: Int!
+  unit: String!
+  proratedMode: Boolean
+  gracePeriodDays: Int
+}
+
+input RecordPaymentInput {
+  memberSubscriptionId: ID!
+  amount: BigDecimal!
+  currency: String
+  paymentDate: Date!
+  notes: String
+}
+
+input CreateSessionInput {
+  name: String!
+  sessionType: String!
+  dayOfWeek: String!
+  startTime: LocalTime!
+  endTime: LocalTime!
+  location: String!
+  trainerId: ID
+}
+
+input CreateSessionOccurrencesInput {
+  sessionId: ID!
+  startDate: Date!
+  endDate: Date!
+  skipDates: [Date]
+}
+
+input CreateTrainerInput {
+  firstName: String!
+  lastName: String!
+  email: String!
+  phoneNumber: String
+  hourlyRate: BigDecimal!
+  paymentMode: String!
+  autoApproveHours: Boolean
+}
+
+input UpdateTrainerInput {
+  firstName: String
+  lastName: String
+  email: String
+  phoneNumber: String
+}
+
+input UpdateTrainerSettingsInput {
+  hourlyRate: BigDecimal
+  paymentMode: String
+  autoApproveHours: Boolean
+}
+
+input LogTrainerHoursInput {
+  trainerId: ID!
+  sessionOccurrenceId: ID!
+  hoursWorked: BigDecimal!
+  notes: String
+}
+
+input SubmitTrainerHoursInput {
+  trainerId: ID!
+  sessionOccurrenceId: ID!
+  hoursWorked: BigDecimal!
+  notes: String
+}
+
+input RejectTrainerLogInput {
+  id: ID!
+  reason: String!
+}
+
+input ResubmitTrainerLogInput {
+  id: ID!
+  hoursWorked: BigDecimal!
+  notes: String
+}
+
+input UploadPaymentDocumentInput {
+  memberSubscriptionId: ID!
+  fileName: String!
+  fileContent: String!
+  notes: String
+}
+
+input ReviewPaymentDocumentInput {
+  memberSubscriptionId: ID!
+  approved: Boolean!
+  reason: String
+}
+
+# ============================================================
+# CHATBOX — natural-language assistant
+# ============================================================
+
+"""
+Input for the ask query. The prompt is a free-form question in any language
+supported by the configured LLM (Anthropic Claude by default). Locale is an
+optional BCP-47 tag hint that biases the response language.
+"""
+input AskInput {
+  "The user's natural-language question. 1-2000 characters."
+  prompt: String!
+
+  "Optional BCP-47 locale tag (e.g. en-US, de-AT). Defaults to en-US if omitted."
+  locale: String
+}
+
+"""
+Synthesised answer plus metadata. The answer itself is plain text or light
+Markdown and is safe to render directly in a chat UI.
+"""
+type AskResult {
+  "Final natural-language answer produced by the LLM."
+  answer: String!
+
+  "Tools the LLM invoked while producing the answer. Empty list when the model answered directly."
+  toolCalls: [ToolCallSummary!]!
+
+  "Identifier of the model that produced the answer (e.g. claude-haiku-4-5-20251001)."
+  model: String!
+
+  "Provider-reported prompt tokens. Null when the provider does not expose usage."
+  promptTokens: Int
+
+  "Provider-reported completion tokens. Null when the provider does not expose usage."
+  completionTokens: Int
+
+  "End-to-end server latency in milliseconds (rate-limit check + LLM round-trip + tool calls)."
+  latencyMillis: Int!
+}
+
+"""
+Summary of one tool invocation. Phase 1 does not yet surface the per-call
+trace through the fluent ChatClient API, so this list is always empty — the
+type exists so the frontend can start consuming it once the trace is wired.
+"""
+type ToolCallSummary {
+  "Tool method name (e.g. outstandingPayments)."
+  name: String!
+
+  "JSON string of the arguments the LLM passed to the tool."
+  arguments: String!
+
+  "Tool execution time in milliseconds."
+  durationMillis: Int!
+
+  "Domain-exception message if the tool threw; null on success."
+  error: String
+}
