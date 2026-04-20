@@ -12,6 +12,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 import at.mavila.dbchatbox.domain.club.member.Member;
+import at.mavila.dbchatbox.domain.club.member.MemberNotFoundException;
 import at.mavila.dbchatbox.domain.club.member.MemberService;
 import at.mavila.dbchatbox.domain.club.member.MemberStatusHistory;
 import at.mavila.dbchatbox.domain.club.member.Status;
@@ -70,8 +71,12 @@ public class MemberQueryTools {
   public MemberSummary memberById(
       @ToolParam(description = "The member's TSID (the same id string returned by listMembers).")
       final Long id) {
-    final Member member = memberService.findById(id);
-    return isNull(member) ? null : toSummary(member);
+    try {
+      final Member member = memberService.findById(id);
+      return isNull(member) ? null : toSummary(member);
+    } catch (final MemberNotFoundException ex) {
+      return null;
+    }
   }
 
   /**

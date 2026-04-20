@@ -1,6 +1,7 @@
 package at.mavila.dbchatbox.domain.chatbox;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -28,17 +29,10 @@ import lombok.Setter;
  * @since 2026-04-20
  */
 @ConfigurationProperties(prefix = "app.chatbox")
+@Validated
 @Getter
 @Setter
 public class ChatboxProperties {
-
-  /**
-   * Whether the chatbox feature is enabled. When {@code false}, the
-   * {@code ask} GraphQL query still exists but returns a static "disabled"
-   * message without calling the LLM. Useful for toggling off at runtime
-   * without removing the dependency.
-   */
-  private boolean enabled = true;
 
   /**
    * Model identifier — also configured at the Spring AI layer via
