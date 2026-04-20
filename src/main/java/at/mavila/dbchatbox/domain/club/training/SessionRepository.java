@@ -1,7 +1,9 @@
 package at.mavila.dbchatbox.domain.club.training;
 
 import java.time.DayOfWeek;
+import java.time.LocalTime;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -59,4 +61,30 @@ public interface SessionRepository extends JpaRepository<Session, Long> {
       + "WHERE ms.member.id = :memberId AND ms.endDate >= CURRENT_DATE")
   List<Session> findSessionsByMemberId(@Param("memberId")
   Long memberId);
+
+  /**
+   * Returns the IDs of trainers who already have at least one session that
+   * overlaps the given day-of-week and time range.
+   *
+   * <p>
+   * Used by {@link SessionService#findAvailableTrainers} as a one-shot
+   * "busy set" query — replaces an earlier N+1 pattern that fetched every
+   * trainer's day sessions individually. Overlap semantics match the
+   * in-memory {@code timesOverlap} predicate (strict inequalities, so
+   * sessions that touch on a boundary are NOT considered overlapping).
+   * </p>
+   *
+   * @param dayOfWeek the day of the week
+   * @param startTime the slot's start time (exclusive on the busy side)
+   * @param endTime   the slot's end time (exclusive on the busy side)
+   * @return IDs of trainers busy in the given slot
+   */
+  @Query("SELECT DISTINCT s.trainer.id FROM Session s "
+      + "WHERE s.trainer IS NOT NULL "
+      + "AND s.dayOfWeek = :dayOfWeek "
+      + "AND s.startTime < :endTime AND s.endTime > :startTime")
+  Set<Long> findBusyTrainerIdsForSlot(@Param("dayOfWeek")
+  DayOfWeek dayOfWeek, @Param("startTime")
+  LocalTime startTime, @Param("endTime")
+  LocalTime endTime);
 }

@@ -27,7 +27,13 @@ import lombok.RequiredArgsConstructor;
 @Transactional
 public class MemberGdprService {
 
-  private static final String DELETED_NAME = "DELETED";
+  /**
+   * Sentinel value written into {@code firstName} / {@code lastName} when a
+   * member is anonymized. Promoted to {@code public} so {@code GdprPurgeJob}
+   * can share the same constant when querying for "not-yet-anonymized" rows
+   * — there is exactly one definition of "anonymized" in this codebase.
+   */
+  public static final String DELETED_NAME = "DELETED";
   private static final String DELETED_EMAIL_TEMPLATE = "deleted-%d@anonymous.local";
 
   private final MemberRepository memberRepository;

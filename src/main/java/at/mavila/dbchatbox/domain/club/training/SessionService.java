@@ -109,9 +109,10 @@ public class SessionService {
   @Transactional(readOnly = true)
   public List<Trainer> findAvailableTrainers(final DayOfWeek dayOfWeek, final LocalTime startTime,
       final LocalTime endTime) {
+    final java.util.Set<Long> busyTrainerIds =
+        sessionRepository.findBusyTrainerIdsForSlot(dayOfWeek, startTime, endTime);
     return trainerRepository.findAll().stream()
-        .filter(trainer -> !hasOverlap(sessionRepository.findByTrainerIdAndDayOfWeek(trainer.getId(), dayOfWeek),
-            startTime, endTime, null))
+        .filter(trainer -> !busyTrainerIds.contains(trainer.getId()))
         .toList();
   }
 

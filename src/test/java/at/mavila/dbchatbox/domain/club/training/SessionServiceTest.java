@@ -123,12 +123,12 @@ class SessionServiceTest {
     void shouldExcludeTrainersWithOverlappingSessions() {
       final Trainer busy = Trainer.builder().id(1L).firstName("Busy").lastName("T").email("busy@t.com").build();
       final Trainer free = Trainer.builder().id(2L).firstName("Free").lastName("T").email("free@t.com").build();
-      final Session existing = Session.builder().id(99L).startTime(LocalTime.of(9, 0)).endTime(LocalTime.of(10, 0))
-          .build();
 
       when(trainerRepository.findAll()).thenReturn(List.of(busy, free));
-      when(sessionRepository.findByTrainerIdAndDayOfWeek(1L, DayOfWeek.MONDAY)).thenReturn(List.of(existing));
-      when(sessionRepository.findByTrainerIdAndDayOfWeek(2L, DayOfWeek.MONDAY)).thenReturn(List.of());
+      // The repository now returns the busy-trainer ID set in one query —
+      // no per-trainer round trip.
+      when(sessionRepository.findBusyTrainerIdsForSlot(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0)))
+          .thenReturn(java.util.Set.of(1L));
 
       final List<Trainer> result = sessionService.findAvailableTrainers(DayOfWeek.MONDAY, LocalTime.of(9, 0),
           LocalTime.of(10, 0));
