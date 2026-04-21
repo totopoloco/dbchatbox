@@ -31,9 +31,9 @@ Spring AI brings LLM-powered features into the Spring ecosystem using familiar p
 auto-configuration, dependency injection, and a provider-agnostic abstraction layer.
 
 ```
-Your Code  ──►  ChatClient (Spring AI)  ──►  Anthropic / OpenAI / Azure / Ollama
-                     │
-                     ▼
+Your Code  -->  ChatClient (Spring AI)  -->  Anthropic / OpenAI / Azure / Ollama
+                     |
+                     v
               Tool Calling Loop
               (dispatches @Tool methods back to your Spring beans)
 ```
@@ -52,7 +52,7 @@ Your Code  ──►  ChatClient (Spring AI)  ──►  Anthropic / OpenAI / Az
 | **BOM**                   | `spring-ai-bom` 1.x | `spring-ai-bom` 2.0.x              |
 | **Milestone repo needed** | No (1.0 GA)         | Yes (2.0.0-M3 as of April 2026)    |
 
-> ⚠️ **Do not downgrade** to Spring AI 1.x in a Spring Boot 4 project — it will fail at runtime with `NoSuchMethodError`.
+> **WARNING: Do not downgrade** to Spring AI 1.x in a Spring Boot 4 project — it will fail at runtime with `NoSuchMethodError`.
 
 ---
 
@@ -261,17 +261,17 @@ public ChatClient chatClient(ChatClient.Builder builder, MemberQueryTools member
 
 ```
 1. User: "Show me all inactive members"
-      │
+      |
 2. ChatClient sends prompt + JSON schemas of all tools to the LLM
-      │
+      |
 3. LLM responds: tool_call { name: "listMembers", args: { status: "INACTIVE" } }
-      │
+      |
 4. Spring AI invokes: memberQueryTools.listMembers("INACTIVE")
-      │
+      |
 5. Result serialised to JSON, sent back to LLM
-      │
-6. LLM synthesises: "There are 3 inactive members: Anna Müller, …"
-      │
+      |
+6. LLM synthesises: "There are 3 inactive members: Anna Müller, ..."
+      |
 7. ChatClient returns the final ChatResponse to your service
 ```
 
