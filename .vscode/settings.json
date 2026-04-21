@@ -42,7 +42,7 @@
     }
   },
   "workbench.colorCustomizations": {
-    "terminal.background": "#0D1117",
+    "terminal.background": "#2e5999",
     "terminal.foreground": "#C9D1D9",
     "terminal.ansiBlack": "#161B22",
     "terminal.ansiRed": "#FF7B72",

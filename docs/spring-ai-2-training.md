@@ -622,15 +622,33 @@ class ChatRateLimiterTest {
 
 ## 12. Configuration Reference
 
-| Property                                       | Default                     | Description                                                        |
-| ---------------------------------------------- | --------------------------- | ------------------------------------------------------------------ |
-| `spring.ai.model.chat`                         | —                           | Provider selector: `anthropic`, `openai`, `ollama`, `azure-openai` |
-| `spring.ai.anthropic.api-key`                  | —                           | Anthropic API key (use env var `ANTHROPIC_API_KEY`)                |
-| `spring.ai.anthropic.chat.options.model`       | —                           | Model ID, e.g. `claude-haiku-4-5-20251001`                         |
-| `spring.ai.anthropic.chat.options.temperature` | `0.7`                       | 0.0 = deterministic, 1.0 = creative                                |
-| `spring.ai.anthropic.chat.options.max-tokens`  | `1024`                      | Max tokens in the LLM response                                     |
-| `app.chatbox.model`                            | `claude-haiku-4-5-20251001` | Fallback model name for metadata                                   |
-| `app.chatbox.rate-limit.requests-per-hour`     | `30`                        | Global sliding-window limit                                        |
+`spring.ai.model.chat`
+: Default: _(none)_
+Provider selector: `anthropic`, `openai`, `ollama`, `azure-openai`
+
+`spring.ai.anthropic.api-key`
+: Default: _(none)_
+Anthropic API key (use env var `ANTHROPIC_API_KEY`)
+
+`spring.ai.anthropic.chat.options.model`
+: Default: _(none)_
+Model ID, e.g. `claude-haiku-4-5-20251001`
+
+`spring.ai.anthropic.chat.options.temperature`
+: Default: `0.7`
+0.0 = deterministic, 1.0 = creative
+
+`spring.ai.anthropic.chat.options.max-tokens`
+: Default: `1024`
+Max tokens in the LLM response
+
+`app.chatbox.model`
+: Default: `claude-haiku-4-5-20251001`
+Fallback model name for metadata
+
+`app.chatbox.rate-limit.requests-per-hour`
+: Default: `30`
+Global sliding-window limit
 
 ---
 
@@ -661,6 +679,17 @@ spring.ai.openai.chat.options.max-tokens=1024
 **3. No Java changes needed.** The `ChatClient` abstraction is provider-agnostic.
 
 To use a local model (Ollama):
+
+**1. Change the starter in `build.gradle`:**
+
+```groovy
+// Remove:
+implementation 'org.springframework.ai:spring-ai-starter-model-anthropic'
+// Add:
+implementation 'org.springframework.ai:spring-ai-starter-model-ollama'
+```
+
+**2. Update `application.properties`:**
 
 ```properties
 spring.ai.model.chat=ollama

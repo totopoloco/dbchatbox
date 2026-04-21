@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y \
   procps \
   lsof \
   htop \
+  pandoc \
+  texlive-latex-base \
+  texlive-latex-recommended \
+  texlive-latex-extra \
+  texlive-fonts-recommended \
   && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user with sudo access
