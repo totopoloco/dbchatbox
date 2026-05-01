@@ -31,6 +31,7 @@
    - [Trainer](#trainer)
    - [TrainerSettings](#trainersettings)
    - [TrainerLog (Training Hours)](#trainerlog-training-hours)
+   - [Auditable Base Class](#auditable-base-class)
 3. [Entity Relationship Summary](#entity-relationship-summary)
 4. [GraphQL Operations](#graphql-operations)
    - [Queries](#queries)
@@ -108,6 +109,7 @@
     - [GDPR Compliance](#gdpr-compliance)
     - [Future Phases](#future-phases-out-of-scope)
     - [Enum Storage Pattern](#enum-storage-pattern)
+    - [Auditable Base Class — JPA Lifecycle Callbacks](#auditable-base-class--jpa-lifecycle-callbacks)
 
 ---
 
@@ -639,6 +641,37 @@ Stores **compensation and workflow configuration** for a trainer — how they ar
 - Total hours per trainer can be aggregated by date range (using the occurrence's `date`).
 - **Approval workflow**: New entries are created with status `PENDING` (or `APPROVED` if the trainer's `TrainerSettings.autoApproveHours` is `true`). The admin reviews pending entries and either approves or rejects them. Rejected entries can be resubmitted by the trainer (the log entry is updated in place — `hoursWorked` and `notes` are modified, status returns to `PENDING`, `rejectionReason` is cleared).
 - **Trainer payment calculation**: For `APPROVED` entries, the owed amount = `trainerSettings.hourlyRate × hoursWorked`. The `trainerHours` query includes only `APPROVED` log entries in its aggregation. A separate `pendingTrainerLogs` query shows entries awaiting review.
+
+### Auditable Base Class
+
+All **mutable** domain entities carry two audit timestamps to support traceability and debugging. These fields are managed automatically by JPA lifecycle callbacks and are never set by application code.
+
+| Field       | Type            | Constraints                                                         |
+| ----------- | --------------- | ------------------------------------------------------------------- |
+| `createdAt` | `LocalDateTime` | Not null, set once at insert via `@PrePersist`; never updated       |
+| `updatedAt` | `LocalDateTime` | Not null, set at insert; refreshed on every update via `@PreUpdate` |
+
+**Implementation:** To avoid repeating these fields in every entity, all auditable entities extend the abstract class `Auditable` (see [Architecture Notes — Auditable Base Class](#auditable-base-class--jpa-lifecycle-callbacks)).
+
+**Entities that carry audit timestamps:**
+
+| Entity                | Package                                        |
+| --------------------- | ---------------------------------------------- |
+| `Member`              | `at.mavila.dbchatbox.domain.club.member`       |
+| `MemberStatusHistory` | `at.mavila.dbchatbox.domain.club.member`       |
+| `MemberSubscription`  | `at.mavila.dbchatbox.domain.club.subscription` |
+| `MembershipType`      | `at.mavila.dbchatbox.domain.club.membership`   |
+| `Payment`             | `at.mavila.dbchatbox.domain.club.payment`      |
+| `PaymentDocument`     | `at.mavila.dbchatbox.domain.club.payment`      |
+| `Session`             | `at.mavila.dbchatbox.domain.club.training`     |
+| `SessionOccurrence`   | `at.mavila.dbchatbox.domain.club.training`     |
+| `Trainer`             | `at.mavila.dbchatbox.domain.club.trainer`      |
+| `TrainerSettings`     | `at.mavila.dbchatbox.domain.club.trainer`      |
+| `TrainerLog`          | `at.mavila.dbchatbox.domain.club.trainer`      |
+
+**Exclusions:** Reference/lookup tables (`Status`, `Unit`, `MembershipTypeStatus`, `SessionType`, `SessionOccurrenceStatus`, `TrainerLogStatus`, `TrainerPaymentMode`, `SubscriptionPaymentStatus`) and the join table `MembershipTypeSession` do **not** extend `Auditable` — their rows are static seed data managed by Flyway migrations and never updated by application code.
+
+**GraphQL exposure:** `createdAt` and `updatedAt` are **not** exposed in the GraphQL schema in Phase 1. They are infrastructure-level audit fields. A future phase may expose them on admin-facing queries.
 
 ---
 
@@ -3106,3 +3139,33 @@ The reference tables `Status`, `Unit`, `MembershipTypeStatus`, `SessionType`, `S
 - **Readability**: Database rows contain human-readable strings (`ACTIVE`, `MONTHS`) rather than opaque integer codes.
 - **Type safety**: The Java layer enforces that only declared enum constants can be used.
 - **Extensibility**: New values can be added by extending the enum and inserting a matching seed row — no schema change required.
+
+### Auditable Base Class — JPA Lifecycle Callbacks
+
+To avoid repeating `createdAt`/`updatedAt` fields and their lifecycle logic across every mutable entity, all auditable entities extend a single abstract `Auditable` base class.
+
+**Package:** `at.mavila.dbchatbox.domain.support`
+
+**Contract:**
+
+- `createdAt` (`LocalDateTime`) — populated once in `@PrePersist`; never overwritten on subsequent updates.
+- `updatedAt` (`LocalDateTime`) — populated in both `@PrePersist` and `@PreUpdate`; always reflects the last write timestamp.
+
+**Design rules:**
+
+- The class is `abstract` — it is never instantiated directly, only subclassed.
+- Annotated with `@MappedSuperclass` so JPA maps the inherited columns into the owning entity's table; no separate `auditable` table is created.
+- JPA lifecycle callbacks (`@PrePersist`, `@PreUpdate`) are declared on `Auditable` itself, so every subclass automatically receives the behaviour without any duplication.
+- `LocalDateTime.now()` is used directly inside the callbacks — consistent with the existing pattern for `changedAt` in `MemberStatusHistory` and `submittedAt` in `TrainerLog`. Spring's `Clock` bean is **not** injected into `Auditable` to keep it a plain JPA managed class.
+- Both `createdAt` and `updatedAt` carry `@Column(nullable = false, updatable = ...)` constraints: `createdAt` uses `updatable = false` to prevent accidental overwrite by JPA.
+
+**Database migration:** Adding `created_at` and `updated_at` columns to all existing tables requires a new versioned Flyway migration (e.g. `V{n}__add_audit_columns.sql`). The script must add:
+
+```sql
+ALTER TABLE <table> ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT NOW();
+ALTER TABLE <table> ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT NOW();
+```
+
+for each auditable table. The `DEFAULT NOW()` ensures existing rows are backfilled with a valid timestamp. Future inserts and updates will be managed by the JPA callbacks.
+
+**Tables covered by the migration:** `member`, `member_status_history`, `member_subscription`, `membership_type`, `payment`, `payment_document`, `session`, `session_occurrence`, `trainer`, `trainer_settings`, `trainer_log`.
