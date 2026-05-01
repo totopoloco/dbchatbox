@@ -1,0 +1,146 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Project",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["build", "-x", "test"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gradle"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Build with Tests",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["build"],
+      "group": "build",
+      "problemMatcher": ["$gradle"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Clean Build",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["clean", "build"],
+      "group": "build",
+      "problemMatcher": ["$gradle"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Run Tests",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["test"],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gradle"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Run Application",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["bootRun"],
+      "group": "none",
+      "problemMatcher": ["$gradle"],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Run Application (Debug Mode)",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["bootRun", "--debug-jvm"],
+      "group": "none",
+      "problemMatcher": ["$gradle"],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Clean",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["clean"],
+      "group": "none",
+      "problemMatcher": ["$gradle"],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Refresh Dependencies",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["--refresh-dependencies"],
+      "group": "none",
+      "problemMatcher": ["$gradle"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Show Dependencies",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["dependencies"],
+      "group": "none",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Generate JAR",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["bootJar"],
+      "group": "build",
+      "problemMatcher": ["$gradle"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Check for Updates",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["dependencyUpdates"],
+      "group": "none",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}
+

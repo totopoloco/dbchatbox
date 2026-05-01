@@ -1,0 +1,13 @@
+{
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/.metadata/**",
+    "**/archetype-resources/**",
+    "**/META-INF/maven/**",
+    "**/build/**",
+    "**/.gradle/**"
+  ],
+  "java.project.referencedLibraries": [
+    "lib/**/*.jar"
+  ]
+}

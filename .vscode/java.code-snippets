@@ -1,0 +1,51 @@
+{
+  "Spring Boot Test Class": {
+    "prefix": "stest",
+    "scope": "java",
+    "body": [
+      "package ${1:at.mavila.exercises_january_2026.components};",
+      "",
+      "import static org.assertj.core.api.Assertions.*;",
+      "",
+      "import org.junit.jupiter.api.DisplayName;",
+      "import org.junit.jupiter.api.Test;",
+      "import org.springframework.beans.factory.annotation.Autowired;",
+      "import org.springframework.boot.test.context.SpringBootTest;",
+      "",
+      "@SpringBootTest",
+      "@DisplayName(\"${2:ClassName} Tests\")",
+      "class ${2:ClassName}Test {",
+      "",
+      "    @Autowired",
+      "    private ${2:ClassName} ${3:instance};",
+      "",
+      "    @Test",
+      "    @DisplayName(\"Should $4\")",
+      "    void should$5() {",
+      "        // Given",
+      "        $0",
+      "        // When",
+      "",
+      "        // Then",
+      "    }",
+      "}"
+    ],
+    "description": "Spring Boot Test Class (package-private)"
+  },
+  "Test Method": {
+    "prefix": "tmethod",
+    "scope": "java",
+    "body": [
+      "@Test",
+      "@DisplayName(\"Should $1\")",
+      "void should$2() {",
+      "    // Given",
+      "    $0",
+      "    // When",
+      "",
+      "    // Then",
+      "}"
+    ],
+    "description": "JUnit 5 Test Method with DisplayName"
+  }
+}
