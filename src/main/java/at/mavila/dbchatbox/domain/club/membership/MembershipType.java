@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import at.mavila.dbchatbox.domain.club.training.Session;
+import at.mavila.dbchatbox.domain.support.Auditable;
 import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -42,7 +43,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class MembershipType {
+public class MembershipType extends Auditable {
 
   @Id
   @TsidGenerated

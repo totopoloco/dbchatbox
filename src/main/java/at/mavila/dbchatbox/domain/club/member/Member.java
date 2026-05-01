@@ -2,6 +2,7 @@ package at.mavila.dbchatbox.domain.club.member;
 
 import java.time.LocalDate;
 
+import at.mavila.dbchatbox.domain.support.Auditable;
 import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -34,7 +35,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Member {
+public class Member extends Auditable {
 
   @Id
   @TsidGenerated

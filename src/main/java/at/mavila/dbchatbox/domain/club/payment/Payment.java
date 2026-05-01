@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
+import at.mavila.dbchatbox.domain.support.Auditable;
 import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -37,7 +38,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Payment {
+public class Payment extends Auditable {
 
   @Id
   @TsidGenerated

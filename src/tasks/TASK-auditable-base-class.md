@@ -1,7 +1,7 @@
 # TASK: Auditable Base Class Implementation
 
 **Spec reference:** `ClubManagement.md` → §2 Auditable Base Class / §10 Auditable Base Class — JPA Lifecycle Callbacks
-**Status:** Not started
+**Status:** Complete
 
 ---
 
@@ -111,14 +111,14 @@ No additional test class is required; confirm the existing test still passes aft
 
 ## Acceptance Criteria
 
-- [ ] `Auditable.java` exists in `domain/support`, is `abstract`, annotated `@MappedSuperclass`.
-- [ ] All 11 mutable entities extend `Auditable`.
-- [ ] No reference table or join table extends `Auditable`.
-- [ ] `V6__add_audit_columns.sql` migrates all 11 tables; Flyway runs cleanly on H2 (dev/test profiles).
-- [ ] `ddl-auto=validate` passes — Hibernate schema validation matches the migrated DB columns.
-- [ ] After a persist + reload, `createdAt` and `updatedAt` are both populated.
-- [ ] After an update + reload, `updatedAt` has advanced and `createdAt` is unchanged.
-- [ ] All existing tests (`./gradlew test`) continue to pass.
+- [x] `Auditable.java` exists in `domain/support`, is `abstract`, annotated `@MappedSuperclass`.
+- [x] All 11 mutable entities extend `Auditable`.
+- [x] No reference table or join table extends `Auditable`.
+- [x] `V6__add_audit_columns.sql` migrates all 11 tables; Flyway runs cleanly on H2 (dev/test profiles).
+- [x] `ddl-auto=validate` passes — Hibernate schema validation matches the migrated DB columns.
+- [x] After a persist + reload, `createdAt` and `updatedAt` are both populated.
+- [x] After an update + reload, `updatedAt` has advanced and `createdAt` is unchanged.
+- [x] All existing tests (`./gradlew test`) continue to pass.
 
 ---
 

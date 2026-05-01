@@ -2,6 +2,7 @@ package at.mavila.dbchatbox.domain.club.trainer;
 
 import java.math.BigDecimal;
 
+import at.mavila.dbchatbox.domain.support.Auditable;
 import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -37,7 +38,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class TrainerSettings {
+public class TrainerSettings extends Auditable {
 
   @Id
   @TsidGenerated
