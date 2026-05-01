@@ -28,6 +28,11 @@ import lombok.Setter;
  * {@code agreedPrice} minus the sum of all payments.
  * </p>
  *
+ * <p>
+ * Inherits {@code createdAt} and {@code updatedAt} audit timestamps from
+ * {@link at.mavila.dbchatbox.domain.support.Auditable}.
+ * </p>
+ *
  * @since 2026-04-09
  */
 @Entity

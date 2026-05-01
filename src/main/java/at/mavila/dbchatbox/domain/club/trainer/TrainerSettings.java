@@ -28,6 +28,11 @@ import lombok.Setter;
  * trainer's identity.
  * </p>
  *
+ * <p>
+ * Inherits {@code createdAt} and {@code updatedAt} audit timestamps from
+ * {@link at.mavila.dbchatbox.domain.support.Auditable}.
+ * </p>
+ *
  * @since 2026-04-10
  */
 @Entity

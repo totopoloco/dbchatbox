@@ -20,6 +20,11 @@ import lombok.Setter;
  * Compensation and workflow settings are stored in {@link TrainerSettings}.
  * </p>
  *
+ * <p>
+ * Inherits {@code createdAt} and {@code updatedAt} audit timestamps from
+ * {@link at.mavila.dbchatbox.domain.support.Auditable}.
+ * </p>
+ *
  * @since 2026-04-09
  */
 @Entity

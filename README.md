@@ -36,8 +36,8 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ./gradlew bootRun
 ```
 
-The GraphQL endpoint is available at `http://localhost:8080/graphql`.  
-The GraphiQL UI is at `http://localhost:8080/graphiql` (dev profile only).  
+The GraphQL endpoint is available at `http://localhost:8080/graphql`.
+The GraphiQL UI is at `http://localhost:8080/graphiql` (dev profile only).
 The H2 console is at `http://localhost:8080/h2-console` (dev profile only, JDBC URL: `jdbc:h2:mem:dbchatbox`).
 
 ### Profiles
@@ -274,6 +274,29 @@ Phase 1 uses a logging-only mock implementation. Real email delivery can be adde
 
 All entities use JPA `@Version` (stored as `Short`) for optimistic locking, preventing lost updates in concurrent modification scenarios.
 
+### Audit Timestamps
+
+All 11 mutable domain entities (`Member`, `MemberStatusHistory`, `MemberSubscription`, `MembershipType`, `Payment`, `PaymentDocument`, `Session`, `SessionOccurrence`, `Trainer`, `TrainerSettings`, `TrainerLog`) automatically carry two audit timestamps via the abstract `Auditable` base class:
+
+| Field       | DB column    | Behaviour                                            | GraphQL                                |
+| ----------- | ------------ | ---------------------------------------------------- | -------------------------------------- |
+| `createdAt` | `created_at` | Set once at insert via `@PrePersist`; never modified | Exposed as `DateTime!` on all 11 types |
+| `updatedAt` | `updated_at` | Refreshed on every update via `@PreUpdate`           | Internal only — not in schema          |
+
+No application code sets these fields; they are managed entirely by JPA lifecycle callbacks.
+
+```graphql
+# Query createdAt on members
+query {
+  members(status: "ACTIVE") {
+    id
+    firstName
+    lastName
+    createdAt
+  }
+}
+```
+
 ## Chatbox — Natural-Language Assistant
 
 A single GraphQL query — `ask(input: AskInput!): AskResult!` — accepts a free-form
@@ -332,9 +355,9 @@ No Java code changes required — `ChatClient` is provider-agnostic.
 
 ```graphql
 query {
-  ask(input: {
-    prompt: "Show me all members who have not paid yet this period"
-  }) {
+  ask(
+    input: { prompt: "Show me all members who have not paid yet this period" }
+  ) {
     answer
     model
     latencyMillis
@@ -362,14 +385,14 @@ Response (example):
 
 ### Available tools (Phase 1, read-only)
 
-| Tool class                | Methods                                                                               |
-| ------------------------- | ------------------------------------------------------------------------------------- |
-| `MemberQueryTools`        | `listMembers`, `memberById`, `memberStatusHistory`                                    |
-| `MembershipQueryTools`    | `listMembershipTypes`                                                                 |
-| `SubscriptionQueryTools`  | `subscriptionsForMember`, `overdueSubscriptions`, `pendingPaymentReviews`             |
-| `PaymentQueryTools`       | `paymentsForSubscription`, `paymentsForMember`, `outstandingPayments`                 |
-| `SessionQueryTools`       | `listSessions`, `sessionsForMember`, `nextSessionForMember`                           |
-| `TrainerQueryTools`       | `listTrainers`, `trainerHours`, `pendingTrainerLogs`, `trainerPaymentSummary`         |
+| Tool class               | Methods                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| `MemberQueryTools`       | `listMembers`, `memberById`, `memberStatusHistory`                            |
+| `MembershipQueryTools`   | `listMembershipTypes`                                                         |
+| `SubscriptionQueryTools` | `subscriptionsForMember`, `overdueSubscriptions`, `pendingPaymentReviews`     |
+| `PaymentQueryTools`      | `paymentsForSubscription`, `paymentsForMember`, `outstandingPayments`         |
+| `SessionQueryTools`      | `listSessions`, `sessionsForMember`, `nextSessionForMember`                   |
+| `TrainerQueryTools`      | `listTrainers`, `trainerHours`, `pendingTrainerLogs`, `trainerPaymentSummary` |
 
 All tools are **read-only**. Mutating operations (creating members, recording
 payments, …) are **not** exposed to the LLM — they remain available only
@@ -377,15 +400,15 @@ through the typed GraphQL API.
 
 ### Configuration
 
-| Property                                       | Default                     | Purpose                                          |
-| ---------------------------------------------- | --------------------------- | ------------------------------------------------ |
-| `spring.ai.model.chat`                         | `anthropic`                 | Which Spring AI starter to activate              |
-| `spring.ai.anthropic.api-key`                  | (env `ANTHROPIC_API_KEY`)   | Anthropic API key                                |
-| `spring.ai.anthropic.chat.options.model`       | `claude-haiku-4-5-20251001` | Model id                                         |
-| `spring.ai.anthropic.chat.options.temperature` | `0.2`                       | LLM temperature (low = deterministic)            |
-| `spring.ai.anthropic.chat.options.max-tokens`  | `1024`                      | Per-call token cap                               |
-| `app.chatbox.enabled`                          | `true`                      | Master on/off switch                             |
-| `app.chatbox.rate-limit.requests-per-hour`     | `30`                        | Global sliding-window limit                      |
+| Property                                       | Default                     | Purpose                               |
+| ---------------------------------------------- | --------------------------- | ------------------------------------- |
+| `spring.ai.model.chat`                         | `anthropic`                 | Which Spring AI starter to activate   |
+| `spring.ai.anthropic.api-key`                  | (env `ANTHROPIC_API_KEY`)   | Anthropic API key                     |
+| `spring.ai.anthropic.chat.options.model`       | `claude-haiku-4-5-20251001` | Model id                              |
+| `spring.ai.anthropic.chat.options.temperature` | `0.2`                       | LLM temperature (low = deterministic) |
+| `spring.ai.anthropic.chat.options.max-tokens`  | `1024`                      | Per-call token cap                    |
+| `app.chatbox.enabled`                          | `true`                      | Master on/off switch                  |
+| `app.chatbox.rate-limit.requests-per-hour`     | `30`                        | Global sliding-window limit           |
 
 ### Current Phase 1 limitations
 

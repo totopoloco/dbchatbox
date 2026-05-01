@@ -28,6 +28,11 @@ import lombok.Setter;
  * {@code storagePath} field holds the reference.
  * </p>
  *
+ * <p>
+ * Inherits {@code createdAt} and {@code updatedAt} audit timestamps from
+ * {@link at.mavila.dbchatbox.domain.support.Auditable}.
+ * </p>
+ *
  * @since 2026-04-13
  */
 @Entity

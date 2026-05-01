@@ -31,6 +31,11 @@ import lombok.Setter;
  * {@link MembershipTypeStatus#DRAFT} and must be explicitly activated before subscriptions can be created.
  * </p>
  *
+ * <p>
+ * Inherits {@code createdAt} and {@code updatedAt} audit timestamps from
+ * {@link at.mavila.dbchatbox.domain.support.Auditable}.
+ * </p>
+ *
  * @since 2026-04-09
  */
 @Entity

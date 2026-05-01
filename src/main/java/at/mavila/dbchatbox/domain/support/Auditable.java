@@ -28,18 +28,42 @@ import lombok.Getter;
 @Getter
 public abstract class Auditable {
 
+  /**
+   * The timestamp at which this entity was first persisted. Set once by {@link #prePersist()} and never modified
+   * afterwards — the {@code updatable = false} column constraint prevents accidental overwrites by JPA.
+   *
+   * <p>
+   * Exposed in the GraphQL API as {@code createdAt: DateTime!}.
+   * </p>
+   */
   @Column(name = "created_at", nullable = false, updatable = false)
   private LocalDateTime createdAt;
 
+  /**
+   * The timestamp of the most recent write to this entity. Initialized alongside {@link #createdAt} in
+   * {@link #prePersist()} and refreshed on every subsequent update by {@link #preUpdate()}.
+   *
+   * <p>
+   * Internal infrastructure field — not exposed in the GraphQL schema.
+   * </p>
+   */
   @Column(name = "updated_at", nullable = false)
   private LocalDateTime updatedAt;
 
+  /**
+   * JPA lifecycle callback invoked before a new entity is inserted. Initializes both {@link #createdAt} and
+   * {@link #updatedAt} to the current timestamp.
+   */
   @PrePersist
   void prePersist() {
     createdAt = LocalDateTime.now();
     updatedAt = LocalDateTime.now();
   }
 
+  /**
+   * JPA lifecycle callback invoked before an existing entity is updated. Refreshes {@link #updatedAt} to the current
+   * timestamp; {@link #createdAt} is intentionally left unchanged.
+   */
   @PreUpdate
   void preUpdate() {
     updatedAt = LocalDateTime.now();

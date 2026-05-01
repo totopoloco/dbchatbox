@@ -29,6 +29,11 @@ import lombok.Setter;
  * date on which the session actually takes place.
  * </p>
  *
+ * <p>
+ * Inherits {@code createdAt} and {@code updatedAt} audit timestamps from
+ * {@link at.mavila.dbchatbox.domain.support.Auditable}.
+ * </p>
+ *
  * @since 2026-04-09
  */
 @Entity

@@ -671,7 +671,7 @@ All **mutable** domain entities carry two audit timestamps to support traceabili
 
 **Exclusions:** Reference/lookup tables (`Status`, `Unit`, `MembershipTypeStatus`, `SessionType`, `SessionOccurrenceStatus`, `TrainerLogStatus`, `TrainerPaymentMode`, `SubscriptionPaymentStatus`) and the join table `MembershipTypeSession` do **not** extend `Auditable` — their rows are static seed data managed by Flyway migrations and never updated by application code.
 
-**GraphQL exposure:** `createdAt` and `updatedAt` are **not** exposed in the GraphQL schema in Phase 1. They are infrastructure-level audit fields. A future phase may expose them on admin-facing queries.
+**GraphQL exposure:** `createdAt` is exposed as `DateTime!` on all 11 auditable entity types in the GraphQL schema — it allows clients to see when a record was first created. `updatedAt` is **not** exposed in the GraphQL schema; it remains an internal JPA audit field used for debugging and infrastructure tracing only.
 
 ---
 
@@ -3158,6 +3158,8 @@ To avoid repeating `createdAt`/`updatedAt` fields and their lifecycle logic acro
 - JPA lifecycle callbacks (`@PrePersist`, `@PreUpdate`) are declared on `Auditable` itself, so every subclass automatically receives the behaviour without any duplication.
 - `LocalDateTime.now()` is used directly inside the callbacks — consistent with the existing pattern for `changedAt` in `MemberStatusHistory` and `submittedAt` in `TrainerLog`. Spring's `Clock` bean is **not** injected into `Auditable` to keep it a plain JPA managed class.
 - Both `createdAt` and `updatedAt` carry `@Column(nullable = false, updatable = ...)` constraints: `createdAt` uses `updatable = false` to prevent accidental overwrite by JPA.
+
+**GraphQL exposure:** `createdAt` is added as `DateTime!` on all 11 auditable GraphQL output types (`Member`, `MemberStatusEntry`, `MembershipType`, `MemberSubscription`, `Payment`, `PaymentDocument`, `Session`, `SessionOccurrence`, `Trainer`, `TrainerSettings`, `TrainerLog`). `updatedAt` is intentionally omitted from the schema — it is an internal audit field only.
 
 **Database migration:** Adding `created_at` and `updated_at` columns to all existing tables requires a new versioned Flyway migration (e.g. `V{n}__add_audit_columns.sql`). The script must add:
 

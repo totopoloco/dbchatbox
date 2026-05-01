@@ -217,6 +217,7 @@ type Member {
   memberUntil: Date
   currentStatus: String!
   subscriptions(active: Boolean): [MemberSubscription!]!
+  createdAt: DateTime!
 }
 
 type MemberStatusEntry {
@@ -224,6 +225,7 @@ type MemberStatusEntry {
   status: String!
   changedAt: DateTime!
   reason: String
+  createdAt: DateTime!
 }
 
 type MembershipType {
@@ -237,6 +239,7 @@ type MembershipType {
   proratedMode: Boolean!
   gracePeriodDays: Int!
   sessions: [Session!]!
+  createdAt: DateTime!
 }
 
 type MemberSubscription {
@@ -248,6 +251,7 @@ type MemberSubscription {
   agreedPrice: BigDecimal!
   paymentStatus: String!
   active: Boolean!
+  createdAt: DateTime!
 }
 
 type Payment {
@@ -257,6 +261,7 @@ type Payment {
   currency: String!
   paymentDate: Date!
   notes: String
+  createdAt: DateTime!
 }
 
 type Session {
@@ -268,6 +273,7 @@ type Session {
   endTime: LocalTime!
   location: String!
   trainer: Trainer
+  createdAt: DateTime!
 }
 
 type SessionOccurrence {
@@ -276,6 +282,7 @@ type SessionOccurrence {
   date: Date!
   status: String!
   notes: String
+  createdAt: DateTime!
 }
 
 type Trainer {
@@ -285,6 +292,7 @@ type Trainer {
   email: String!
   phoneNumber: String
   settings: TrainerSettings
+  createdAt: DateTime!
 }
 
 type TrainerSettings {
@@ -292,6 +300,7 @@ type TrainerSettings {
   hourlyRate: BigDecimal!
   paymentMode: String!
   autoApproveHours: Boolean!
+  createdAt: DateTime!
 }
 
 type TrainerLog {
@@ -304,6 +313,7 @@ type TrainerLog {
   reviewedAt: DateTime
   rejectionReason: String
   notes: String
+  createdAt: DateTime!
 }
 
 type MemberPaymentStatus {
@@ -352,6 +362,7 @@ type PaymentDocument {
   fileSize: Long!
   uploadedAt: DateTime!
   notes: String
+  createdAt: DateTime!
 }
 
 type OverdueSubscription {

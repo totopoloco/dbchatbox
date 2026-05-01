@@ -27,6 +27,11 @@ import lombok.Setter;
  * The current status of a member is determined by the most recent entry (ordered by {@code changedAt} descending).
  * </p>
  *
+ * <p>
+ * Inherits {@code createdAt} and {@code updatedAt} audit timestamps from
+ * {@link at.mavila.dbchatbox.domain.support.Auditable}.
+ * </p>
+ *
  * @since 2026-04-09
  */
 @Entity
