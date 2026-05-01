@@ -10,13 +10,12 @@ import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTest
 import org.springframework.graphql.test.tester.HttpGraphQlTester;
 
 /**
- * Integration tests verifying that all {@code DateTime!} schema fields serialize correctly when
- * the backing Java type is {@link java.time.LocalDateTime}.
+ * Integration tests verifying that all {@code DateTime!} schema fields serialize correctly when the backing Java type
+ * is {@link java.time.LocalDateTime}.
  *
  * <p>
  * These tests guard against regressions where a {@code DateTime} field is backed by a type that
- * {@link LocalDateTimeScalar} cannot serialize (e.g. if a new field is added with an incompatible
- * type).
+ * {@link LocalDateTimeScalar} cannot serialize (e.g. if a new field is added with an incompatible type).
  * </p>
  *
  * @since 2026-05-01
@@ -49,9 +48,7 @@ class DateTimeScalarTest {
                 createdAt
             }
         }
-        """).variable("id", memberId)
-        .execute()
-        .errors().satisfy(errors -> assertThat(errors).isEmpty())
+        """).variable("id", memberId).execute().errors().satisfy(errors -> assertThat(errors).isEmpty())
         .path("memberById.createdAt").entity(String.class)
         .satisfies(value -> assertThat(value).isNotBlank().contains("T"));
   }
@@ -77,9 +74,7 @@ class DateTimeScalarTest {
                 createdAt
             }
         }
-        """).variable("mid", memberId)
-        .execute()
-        .errors().satisfy(errors -> assertThat(errors).isEmpty())
+        """).variable("mid", memberId).execute().errors().satisfy(errors -> assertThat(errors).isEmpty())
         .path("memberStatusHistory[0].changedAt").entity(String.class)
         .satisfies(value -> assertThat(value).isNotBlank().contains("T"));
   }
@@ -146,12 +141,9 @@ class DateTimeScalarTest {
                 createdAt
             }
         }
-        """).variable("tid", trainerId).variable("oid", occurrenceId)
-        .execute()
-        .errors().satisfy(errors -> assertThat(errors).isEmpty())
-        .path("logTrainerHours.submittedAt").entity(String.class)
-        .satisfies(value -> assertThat(value).isNotBlank().contains("T"))
-        .path("logTrainerHours.createdAt").entity(String.class)
-        .satisfies(value -> assertThat(value).isNotBlank().contains("T"));
+        """).variable("tid", trainerId).variable("oid", occurrenceId).execute().errors()
+        .satisfy(errors -> assertThat(errors).isEmpty()).path("logTrainerHours.submittedAt").entity(String.class)
+        .satisfies(value -> assertThat(value).isNotBlank().contains("T")).path("logTrainerHours.createdAt")
+        .entity(String.class).satisfies(value -> assertThat(value).isNotBlank().contains("T"));
   }
 }
