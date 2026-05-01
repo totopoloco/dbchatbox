@@ -24,8 +24,7 @@ import lombok.Setter;
  * Stores compensation and workflow configuration for a trainer.
  *
  * <p>
- * One-to-one with {@link Trainer}. Separates admin-managed settings (hourly
- * rate, payment mode, auto-approve) from the
+ * One-to-one with {@link Trainer}. Separates admin-managed settings (hourly rate, payment mode, auto-approve) from the
  * trainer's identity.
  * </p>
  *

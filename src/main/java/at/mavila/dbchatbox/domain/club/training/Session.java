@@ -23,12 +23,10 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Represents a recurring weekly schedule slot for a club activity (training,
- * free games, etc.).
+ * Represents a recurring weekly schedule slot for a club activity (training, free games, etc.).
  *
  * <p>
- * A session defines <em>when</em> and <em>where</em> an activity happens on a
- * weekly basis. Individual dated instances
+ * A session defines <em>when</em> and <em>where</em> an activity happens on a weekly basis. Individual dated instances
  * are materialized as {@link SessionOccurrence} records.
  * </p>
  *

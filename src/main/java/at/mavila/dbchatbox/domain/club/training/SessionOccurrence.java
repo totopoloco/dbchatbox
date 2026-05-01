@@ -25,8 +25,7 @@ import lombok.Setter;
  * A concrete, date-specific instance of a {@link Session}.
  *
  * <p>
- * While {@code Session} defines the recurring weekly template,
- * {@code SessionOccurrence} materializes each individual
+ * While {@code Session} defines the recurring weekly template, {@code SessionOccurrence} materializes each individual
  * date on which the session actually takes place.
  * </p>
  *

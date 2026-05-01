@@ -24,8 +24,7 @@ import lombok.Setter;
  * Tracks every status transition for a member, providing a full audit trail.
  *
  * <p>
- * The current status of a member is determined by the most recent entry
- * (ordered by {@code changedAt} descending).
+ * The current status of a member is determined by the most recent entry (ordered by {@code changedAt} descending).
  * </p>
  *
  * @since 2026-04-09

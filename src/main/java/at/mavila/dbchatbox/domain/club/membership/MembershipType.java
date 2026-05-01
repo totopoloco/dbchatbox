@@ -24,14 +24,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Defines a type of membership the club offers (e.g., "Free Games",
- * "Training").
+ * Defines a type of membership the club offers (e.g., "Free Games", "Training").
  *
  * <p>
- * Includes pricing, duration, linked sessions, and lifecycle status. New
- * membership types start in
- * {@link MembershipTypeStatus#DRAFT} and must be explicitly activated before
- * subscriptions can be created.
+ * Includes pricing, duration, linked sessions, and lifecycle status. New membership types start in
+ * {@link MembershipTypeStatus#DRAFT} and must be explicitly activated before subscriptions can be created.
  * </p>
  *
  * @since 2026-04-09

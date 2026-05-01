@@ -12,15 +12,14 @@ import lombok.Getter;
  * Abstract JPA base class that provides automatic audit timestamps for all mutable domain entities.
  *
  * <p>
- * Subclasses inherit {@code createdAt} and {@code updatedAt} columns, which are
- * populated by JPA lifecycle callbacks — no application code sets them explicitly.
- * {@code createdAt} is written once at insert and never modified; {@code updatedAt}
- * is refreshed on every update.
+ * Subclasses inherit {@code createdAt} and {@code updatedAt} columns, which are populated by JPA lifecycle callbacks —
+ * no application code sets them explicitly. {@code createdAt} is written once at insert and never modified;
+ * {@code updatedAt} is refreshed on every update.
  * </p>
  *
  * <p>
- * Annotated with {@link MappedSuperclass} so JPA maps the inherited columns into
- * each owning entity's table — no separate {@code auditable} table is created.
+ * Annotated with {@link MappedSuperclass} so JPA maps the inherited columns into each owning entity's table — no
+ * separate {@code auditable} table is created.
  * </p>
  *
  * @since 2026-05-01

@@ -17,71 +17,67 @@ import at.mavila.dbchatbox.domain.club.member.MemberRepository;
 import at.mavila.dbchatbox.domain.club.member.MemberService;
 
 /**
- * Verifies that the {@link Auditable} JPA lifecycle callbacks populate
- * {@code createdAt} and {@code updatedAt} automatically and that
- * {@code createdAt} is immutable after an update.
+ * Verifies that the {@link Auditable} JPA lifecycle callbacks populate {@code createdAt} and {@code updatedAt}
+ * automatically and that {@code createdAt} is immutable after an update.
  */
 @SpringBootTest
 @Transactional
 class AuditableTest {
 
-  @Autowired
-  private MemberService memberService;
+    @Autowired
+    private MemberService memberService;
 
-  @Autowired
-  private MemberRepository memberRepository;
+    @Autowired
+    private MemberRepository memberRepository;
 
-  @Nested
-  class OnInsert {
+    @Nested
+    class OnInsert {
 
-    @Test
-    void testCreatedAtAndUpdatedAt_populatedAfterPersist() {
-      final LocalDateTime before = LocalDateTime.now().minusSeconds(1);
+        @Test
+        void testCreatedAtAndUpdatedAt_populatedAfterPersist() {
+            final LocalDateTime before = LocalDateTime.now().minusSeconds(1);
 
-      final Member member = memberService.createMember(
-          new CreateMemberCommand("Jane", "Doe", "jane.audit@example.com",
-              null, LocalDate.of(2024, 1, 1), null));
+            final Member member = memberService.createMember(new CreateMemberCommand("Jane", "Doe",
+                    "jane.audit@example.com", null, LocalDate.of(2024, 1, 1), null));
 
-      assertThat(member.getCreatedAt()).isNotNull().isAfter(before);
-      assertThat(member.getUpdatedAt()).isNotNull().isAfter(before);
-    }
-  }
-
-  @Nested
-  class OnUpdate {
-
-    @Test
-    void testUpdatedAt_advancesAfterUpdate() {
-      final Member saved = memberService.createMember(
-          new CreateMemberCommand("Jane", "Doe", "jane.update@example.com",
-              null, LocalDate.of(2024, 1, 1), null));
-
-      final LocalDateTime createdAt = saved.getCreatedAt();
-      final LocalDateTime updatedAtFirst = saved.getUpdatedAt();
-
-      // Flush to DB so the next save triggers @PreUpdate (not a second @PrePersist)
-      memberRepository.flush();
-
-      saved.setFirstName("Janet");
-      final Member updated = memberRepository.saveAndFlush(saved);
-
-      assertThat(updated.getCreatedAt()).isEqualTo(createdAt);
-      assertThat(updated.getUpdatedAt()).isAfterOrEqualTo(updatedAtFirst);
+            assertThat(member.getCreatedAt()).isNotNull().isAfter(before);
+            assertThat(member.getUpdatedAt()).isNotNull().isAfter(before);
+        }
     }
 
-    @Test
-    void testCreatedAt_unchangedAfterUpdate() {
-      final Member saved = memberService.createMember(
-          new CreateMemberCommand("Jane", "Doe", "jane.immutable@example.com",
-              null, LocalDate.of(2024, 1, 1), null));
+    @Nested
+    class OnUpdate {
 
-      final LocalDateTime originalCreatedAt = saved.getCreatedAt();
+        @Test
+        void testUpdatedAt_advancesAfterUpdate() {
+            final Member saved = memberService.createMember(new CreateMemberCommand("Jane", "Doe",
+                    "jane.update@example.com", null, LocalDate.of(2024, 1, 1), null));
 
-      memberRepository.flush();
-      saved.setLastName("Smith");
-      final Member updated = memberRepository.saveAndFlush(saved);
+            final LocalDateTime createdAt = saved.getCreatedAt();
+            final LocalDateTime updatedAtFirst = saved.getUpdatedAt();
 
-      assertThat(updated.getCreatedAt()).isEqualTo(originalCreatedAt);
+            // Flush to DB so the next save triggers @PreUpdate (not a second @PrePersist)
+            memberRepository.flush();
+
+            saved.setFirstName("Janet");
+            final Member updated = memberRepository.saveAndFlush(saved);
+
+            assertThat(updated.getCreatedAt()).isEqualTo(createdAt);
+            assertThat(updated.getUpdatedAt()).isAfterOrEqualTo(updatedAtFirst);
+        }
+
+        @Test
+        void testCreatedAt_unchangedAfterUpdate() {
+            final Member saved = memberService.createMember(new CreateMemberCommand("Jane", "Doe",
+                    "jane.immutable@example.com", null, LocalDate.of(2024, 1, 1), null));
+
+            final LocalDateTime originalCreatedAt = saved.getCreatedAt();
+
+            memberRepository.flush();
+            saved.setLastName("Smith");
+            final Member updated = memberRepository.saveAndFlush(saved);
+
+            assertThat(updated.getCreatedAt()).isEqualTo(originalCreatedAt);
+        }
     }
-  }
 }

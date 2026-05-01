@@ -27,8 +27,7 @@ import lombok.Setter;
  * Records that a trainer conducted a specific session on a specific date.
  *
  * <p>
- * Linked to a {@link SessionOccurrence} (which provides the date) and a
- * {@link Trainer}. Follows an approval workflow:
+ * Linked to a {@link SessionOccurrence} (which provides the date) and a {@link Trainer}. Follows an approval workflow:
  * PENDING → APPROVED or REJECTED. APPROVED is terminal.
  * </p>
  *

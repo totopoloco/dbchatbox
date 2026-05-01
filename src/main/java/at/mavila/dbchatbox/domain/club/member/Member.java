@@ -16,14 +16,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Represents a person's membership in the club — their identity, contact
- * details, and when they joined.
+ * Represents a person's membership in the club — their identity, contact details, and when they joined.
  *
  * <p>
- * Status is <strong>not</strong> stored directly on this entity; it is derived
- * from the most recent
- * {@link MemberStatusHistory} entry. Membership types are managed via
- * {@code MemberSubscription}.
+ * Status is <strong>not</strong> stored directly on this entity; it is derived from the most recent
+ * {@link MemberStatusHistory} entry. Membership types are managed via {@code MemberSubscription}.
  * </p>
  *
  * @since 2026-04-09

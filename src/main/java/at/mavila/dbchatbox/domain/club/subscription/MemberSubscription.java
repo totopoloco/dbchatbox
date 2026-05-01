@@ -27,14 +27,12 @@ import lombok.Setter;
  * Links a member to a membership type for a specific period.
  *
  * <p>
- * One subscription = one period = one expected payment. When the period ends
- * and the member wants to continue, the
+ * One subscription = one period = one expected payment. When the period ends and the member wants to continue, the
  * administrator creates a new subscription (renewal).
  * </p>
  *
  * <p>
- * Note: {@code memberId} is nullable to support GDPR purge (subscriptions with
- * payments survive member deletion with
+ * Note: {@code memberId} is nullable to support GDPR purge (subscriptions with payments survive member deletion with
  * {@code memberId} set to null).
  * </p>
  *

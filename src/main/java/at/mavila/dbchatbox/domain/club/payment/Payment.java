@@ -24,8 +24,7 @@ import lombok.Setter;
  * Records a payment made against a member subscription.
  *
  * <p>
- * A subscription can have multiple payments (e.g., partial payments).
- * Outstanding dues per subscription =
+ * A subscription can have multiple payments (e.g., partial payments). Outstanding dues per subscription =
  * {@code agreedPrice} minus the sum of all payments.
  * </p>
  *

@@ -20,16 +20,12 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Stores a payment proof document (bank-issued PDF) uploaded by a member for a
- * specific subscription.
+ * Stores a payment proof document (bank-issued PDF) uploaded by a member for a specific subscription.
  *
  * <p>
- * The document serves as evidence of payment and triggers the admin
- * verification workflow.
- * Only PDF files are accepted ({@code contentType} must be
- * {@code application/pdf}).
- * The actual file is stored outside the database; the {@code storagePath} field
- * holds the reference.
+ * The document serves as evidence of payment and triggers the admin verification workflow. Only PDF files are accepted
+ * ({@code contentType} must be {@code application/pdf}). The actual file is stored outside the database; the
+ * {@code storagePath} field holds the reference.
  * </p>
  *
  * @since 2026-04-13
