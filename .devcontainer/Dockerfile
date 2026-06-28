@@ -22,6 +22,14 @@ RUN apt-get update && apt-get install -y \
   texlive-fonts-recommended \
   && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js 22 LTS (required for Claude CLI and frontend tooling)
+RUN curl   -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+  && apt-get install -y --no-install-recommends nodejs \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install Claude CLI
+RUN npm install -g @anthropic-ai/claude-code
+
 # Create a non-root user with sudo access
 ARG USERNAME=vscode
 ARG USER_UID=1000
