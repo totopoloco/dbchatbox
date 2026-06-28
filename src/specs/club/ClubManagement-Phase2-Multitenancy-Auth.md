@@ -226,8 +226,11 @@ tenant-owned business entities, so adding `tenantId` there scopes all of them at
 `MemberSubscription`, `MembershipType`, `Payment`, `PaymentDocument`, `Session`, `SessionOccurrence`,
 `Trainer`, `TrainerSettings`, `TrainerLog`.
 
-**Also gains `tenantId` (not auditable — handled explicitly):** the `membership_type_session` join
-table.
+**`membership_type_session` join table:** This table is a pure `@JoinTable` on `MembershipType` (no
+JPA entity class, no `@PrePersist` hook). Since both parent entities (`MembershipType` and `Session`)
+carry `tenant_id`, cross-tenant associations through the join table are already structurally
+impossible — a tenant's queries only ever see their own parent rows. Converting the join table to a
+full entity just to host a redundant `tenant_id` column provides no isolation benefit. **`membership_type_session` does not receive an explicit `tenant_id` column.**
 
 **Deliberately NOT tenant-scoped (remain global):** the reference/lookup tables `Status`, `Unit`,
 `MembershipTypeStatus`, `SessionType`, `SessionOccurrenceStatus`, `TrainerLogStatus`,
@@ -715,11 +718,16 @@ Next version is **V7** (V1–V6 exist). `V7__add_tenant_and_identity.sql` must, 
 
 1. `CREATE TABLE tenant (...)`, `app_user (...)`, `api_key (...)` with TSID `BIGINT` PKs.
 2. `INSERT` the three tenants (slug, name, realm, issuer) — must match the imported realms (rule 95).
-3. `ALTER TABLE <each of the 11 auditable tables> ADD COLUMN tenant_id BIGINT` + FK to `tenant`; same
-   for `membership_type_session`.
+3. `ALTER TABLE <each of the 11 auditable tables> ADD COLUMN tenant_id BIGINT` + FK to `tenant`.
+   `membership_type_session` is a `@JoinTable` with no JPA entity — it does **not** receive
+   `tenant_id` (isolation is inherited transitively from the tenant-scoped parent rows).
 4. Backfill: assign existing rows `tenant_id = (first tenant)`, then `SET NOT NULL` (rule 97).
 5. Replace global-unique constraints with per-tenant unique indexes (rule 79):
    `member (tenant_id, email)`, `trainer (tenant_id, email)`, `membership_type (tenant_id, name)`.
+   `V1__create_club_schema.sql` uses inline `UNIQUE` (not named `CONSTRAINT`), so PostgreSQL
+   auto-names them `member_email_key`, `trainer_email_key`, and `membership_type_name_key` — use
+   these exact names in the `DROP CONSTRAINT` statements (H2 in `MODE=PostgreSQL` follows the same
+   convention).
 6. Add indexes on every new `tenant_id` column (tenant-filtered reads are on the hot path).
 
 `ddl-auto=validate` means the entities and this migration must agree exactly.

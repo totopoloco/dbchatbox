@@ -136,12 +136,15 @@ void onCreate() {
 
 ---
 
-### T4 — `MembershipTypeSession` join table gets `tenant_id`
+### T4 — `membership_type_session` join table — no change needed
 
-**File:** the Phase 1 `MembershipTypeSession` entity (composite PK, not auditable).
+`membership_type_session` is a pure **`@JoinTable`** on `MembershipType`; there is no JPA entity
+class and therefore no `@PrePersist` hook to auto-set a column. Since both parent entities
+(`MembershipType` and `Session`) carry `tenant_id` after T3, any traversal of the join table is
+already filtered through tenant-scoped parent rows — a cross-tenant association is structurally
+impossible without an explicit column on the join table itself.
 
-Add a `tenantId` field + column (set it from `TenantContext` in the service that creates the link, since
-this entity is not `Auditable`). It is used for direct tenant filtering of the join table.
+**No DDL or Java changes for `membership_type_session` in this task.**
 
 ---
 
@@ -170,7 +173,9 @@ CREATE TABLE tenant (
 );
 
 -- Seed the three tenants. Issuer must match what Keycloak stamps (see spec rule 96).
--- TSID values are illustrative — generate real ones or use a sequence/default consistent with Phase 1.
+-- IDs 1, 2, 3 are intentionally simple integers for these fixture rows, not TSID-formatted values.
+-- TsidIdentifierGenerator fires only on JPA-managed INSERT; it does not validate existing ID values
+-- on read, so plain Long integers work correctly as FK targets and in TenantContext.setTenantId(1L).
 INSERT INTO tenant (id, slug, name, keycloak_realm, issuer_uri) VALUES
   (1, 'wat-simmering',           'WAT Simmering',           'wat-simmering',           'http://localhost:8088/realms/wat-simmering'),
   (2, 'union-rot-weiss',         'Union Rot-Weiss',         'union-rot-weiss',         'http://localhost:8088/realms/union-rot-weiss'),
@@ -213,9 +218,10 @@ CREATE TABLE api_key (
 );
 
 -- 4. Add tenant_id to every owned table, backfill, then enforce NOT NULL ------
--- Repeat this block for each: member, member_status_history, member_subscription,
--- membership_type, payment, payment_document, session, session_occurrence,
--- trainer, trainer_settings, trainer_log, membership_type_session.
+-- Repeat this block for each of the 11 auditable tables: member, member_status_history,
+-- member_subscription, membership_type, payment, payment_document, session, session_occurrence,
+-- trainer, trainer_settings, trainer_log.
+-- (membership_type_session is a @JoinTable with no JPA entity; it is intentionally excluded.)
 ALTER TABLE member ADD COLUMN tenant_id BIGINT;
 UPDATE member SET tenant_id = 1 WHERE tenant_id IS NULL;     -- backfill to first tenant (rule 97)
 ALTER TABLE member ALTER COLUMN tenant_id SET NOT NULL;
@@ -224,17 +230,20 @@ CREATE INDEX idx_member_tenant ON member (tenant_id);
 -- ... (same five statements for each remaining owned table) ...
 
 -- 5. Replace global-unique constraints with per-tenant uniqueness (rule 79) ---
-ALTER TABLE member          DROP CONSTRAINT IF EXISTS uq_member_email;       -- name per Phase 1
+-- V1 used inline UNIQUE (not named CONSTRAINT), so PostgreSQL auto-names them <table>_<column>_key.
+-- H2 in MODE=PostgreSQL follows the same convention. Do NOT use made-up names like uq_member_email.
+ALTER TABLE member          DROP CONSTRAINT IF EXISTS member_email_key;
 CREATE UNIQUE INDEX uq_member_tenant_email ON member (tenant_id, email);
-ALTER TABLE trainer         DROP CONSTRAINT IF EXISTS uq_trainer_email;
+ALTER TABLE trainer         DROP CONSTRAINT IF EXISTS trainer_email_key;
 CREATE UNIQUE INDEX uq_trainer_tenant_email ON trainer (tenant_id, email);
-ALTER TABLE membership_type DROP CONSTRAINT IF EXISTS uq_membership_type_name;
+ALTER TABLE membership_type DROP CONSTRAINT IF EXISTS membership_type_name_key;
 CREATE UNIQUE INDEX uq_membership_type_tenant_name ON membership_type (tenant_id, name);
 ```
 
-> Confirm the exact Phase 1 constraint names (`uq_member_email`, etc.) against V1–V6 before writing the
-> `DROP`s. `ddl-auto=validate` will fail at startup if the entities and this schema disagree — keep them
-> in lockstep.
+> The constraint names above (`member_email_key`, `trainer_email_key`, `membership_type_name_key`) are
+> PostgreSQL's auto-generated names for the inline `UNIQUE` columns in `V1__create_club_schema.sql`.
+> `ddl-auto=validate` will fail at startup if the entities and this schema disagree — keep them in
+> lockstep.
 
 ---
 
@@ -302,14 +311,50 @@ Grep target after this task: no remaining `repo.findById(` on an `Auditable` ent
 
 ---
 
+## Test Compatibility
+
+Adding `tenant_id` to `Auditable.@PrePersist` and throwing when `TenantContext` is null will break
+every existing `@SpringBootTest` test that persists a tenant-owned entity — that is, all of
+`MemberServiceTest`, `TrainerServiceTest`, `SessionServiceTest`, `MemberSubscriptionServiceTest`,
+`PaymentDocumentServiceTest`, and any other domain service test that calls a `save`/create path.
+
+**Fix:** create a shared abstract base class that all tenant-aware integration tests extend:
+
+```java
+// src/test/java/at/mavila/dbchatbox/TenantAwareIntegrationTest.java
+@SpringBootTest
+public abstract class TenantAwareIntegrationTest {
+
+    /** Matches the WAT Simmering row seeded by V7 (id = 1). */
+    protected static final Long TEST_TENANT_ID = 1L;
+
+    @BeforeEach
+    void setUpTenantContext() {
+        TenantContext.setTenantId(TEST_TENANT_ID);
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+}
+```
+
+Every existing domain service test must extend `TenantAwareIntegrationTest`. GraphQL integration
+tests (`MemberControllerIntegrationTest`, etc.) must also extend it — method security annotations
+(`@PreAuthorize`) are not added until [TASK-keycloak-resource-server-auth](./TASK-keycloak-resource-server-auth.md),
+but the tenant context is required from this task onwards.
+
+---
+
 ## Acceptance Criteria
 
 - [ ] `Tenant` entity, repository, and service exist; three tenants are seeded by V7 and match the
       realms defined in [TASK-keycloak-devcontainer-realms](./TASK-keycloak-devcontainer-realms.md).
-- [ ] `Auditable` carries a non-null `tenant_id`; all 11 entities and `membership_type_session` have the
-      column with a FK and an index.
+- [ ] `Auditable` carries a non-null `tenant_id`; all 11 entities (not `membership_type_session`)
+      have the column with a FK and an index.
 - [ ] Email/name uniqueness is per-tenant (two tenants can share an email).
 - [ ] `TenantContext` and `TenantScopedFinder` exist; a null tenant yields empty/denied (fail closed).
 - [ ] Every list query filters by tenant; every by-id read goes through `TenantScopedFinder`.
 - [ ] `./gradlew bootRun` starts with `ddl-auto=validate` passing (entities ⇄ V7 agree).
-- [ ] All new classes have Javadoc; `./gradlew test` passes (Phase 1 tests still green).
+- [ ] `TenantAwareIntegrationTest` base class exists; all Phase 1 tests extend it and pass green.

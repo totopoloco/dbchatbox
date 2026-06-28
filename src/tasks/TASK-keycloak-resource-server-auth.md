@@ -228,7 +228,9 @@ public class SecurityConfig {
 - `AppUserRepository.java` — `Optional<AppUser> findByTenantIdAndKeycloakSubject(Long, String)`.
 - `AppUserService.java`:
   - `provisionOnLogin(Jwt jwt)` — find-or-create the `AppUser` for the current tenant + `sub`
-    (JIT, rule 84). Called from `TenantResolutionFilter` (after tenant is set) or lazily from `me`.
+    (JIT, rule 84). Called **lazily** from `me` (and any other operation that needs the `AppUser`
+    link), **not** from `TenantResolutionFilter` — running a DB write on every authenticated request
+    is unnecessary and expensive for the common case where the `AppUser` already exists.
   - `link(String subject, Long memberId, Long trainerId)` — admin links a subject to a `Member`/
     `Trainer` (both in the same tenant; enforce via `TenantScopedFinder`). Mutually exclusive (rule:
     spec § AppUser). Backs the `linkAppUser` mutation.
@@ -272,6 +274,19 @@ Rules of thumb (from the Phase 1 matrix):
 > Tenant scoping is **not** in these annotations — it is enforced in the data layer (TenantContext +
 > `TenantScopedFinder` from the tenant task). Annotations gate *role*; the data layer gates *tenant*.
 
+> **Phase 1 integration tests.** Adding `@EnableMethodSecurity` and `@PreAuthorize` to all controller
+> methods will break existing `MemberControllerIntegrationTest` and any other GraphQL integration test
+> that calls a role-gated operation without a security context. Fix each affected test class:
+>
+> 1. Extend `TenantAwareIntegrationTest` (from [TASK-tenant-domain](./TASK-tenant-domain.md)) — the
+>    `@BeforeEach` sets `TenantContext` which these tests already need after that task.
+> 2. Add `@WithMockUser(roles = "ADMIN")` at the class or method level for the security context.
+>    `@WithMockUser` creates a `UsernamePasswordAuthenticationToken`, **not** a `JwtAuthenticationToken`,
+>    so `TenantResolutionFilter` does not run — the tenant must come from the `TenantAwareIntegrationTest`
+>    `@BeforeEach`, which is correct for unit-scope GraphQL tests.
+> 3. For tests that specifically assert role restrictions (e.g. a MEMBER cannot call an ADMIN mutation),
+>    use per-method `@WithMockUser(roles = "MEMBER")` to verify the rejection.
+
 ---
 
 ## Security Notes
@@ -283,6 +298,12 @@ Rules of thumb (from the Phase 1 matrix):
 - **No superuser.** There is no authority that crosses tenants; `ADMIN` is always tenant-local (D3).
 - **Clear `TenantContext`.** Always in a `finally`, to avoid leaking a tenant across pooled threads.
 - **Stateless.** No sessions, CSRF disabled — auth is per-request via token/key only.
+- **`JwtDecoders` network call on first use.** `TenantAuthenticationManagerResolver.forIssuer()`
+  calls `JwtDecoders.fromIssuerLocation(iss)`, which fetches the realm's OIDC discovery document
+  over HTTP. This is lazy (on the first authenticated request per issuer), so the app starts without
+  Keycloak. If Keycloak is unreachable at that moment, the call throws a `RestClientException`.
+  Wrap it in a try/catch and rethrow as `InvalidBearerTokenException("Keycloak unreachable: " + iss)`
+  so the filter chain surfaces a `401` instead of a `500`.
 
 ---
 
@@ -297,5 +318,9 @@ Rules of thumb (from the Phase 1 matrix):
 - [ ] `AppUser` is JIT-provisioned on first login; `linkAppUser` links a subject to a member/trainer in
       the same tenant; cross-tenant linking is impossible.
 - [ ] Two different tenants' tokens calling the same query see disjoint data (integration test).
-- [ ] All new classes have Javadoc; `./gradlew test` passes (Phase 1 tests green; new security tests
-      using `spring-security-test` `jwt()` post-processors pass).
+- [ ] All new classes have Javadoc; `./gradlew test` passes.
+- [ ] Phase 1 tests remain green: existing domain service tests extend `TenantAwareIntegrationTest`;
+      existing GraphQL integration tests extend `TenantAwareIntegrationTest` and use
+      `@WithMockUser(roles = "ADMIN")` (or a per-method role annotation) for the security context.
+- [ ] New security tests use `spring-security-test` `jwt()` post-processors to assert role gating
+      and tenant isolation.

@@ -87,23 +87,23 @@ type CurrentUser {
 
 **New file:** `src/main/java/at/mavila/dbchatbox/infrastructure/security/KeycloakAuthClient.java`
 
-Wraps the realm token endpoint using Spring's `RestClient` (no new dependency). Resolves the realm from
-the tenant (via `TenantService`/`TenantRepository`) and posts a form body.
+Wraps the realm token endpoint using Spring's `RestClient` (no new dependency). Accepts a
+pre-resolved `Tenant` so the caller (the controller) controls the single tenant lookup — this
+avoids a redundant DB round-trip when `AuthController` would otherwise re-fetch the tenant for
+the response payload.
 
 ```java
 @Component
 @RequiredArgsConstructor
 public class KeycloakAuthClient {
 
-    private final TenantRepository tenantRepository;
     private final RestClient restClient = RestClient.create();
 
     @Value("${app.keycloak.base-url:http://localhost:8088}") private String baseUrl;
     @Value("${app.keycloak.spa-client-id:club-spa}")         private String spaClientId;
 
     /** OIDC password grant (Direct Access Grant) against the tenant's realm. */
-    public TokenResponse passwordGrant(final String tenantSlug, final String username, final String password) {
-        final Tenant tenant = requireActiveTenant(tenantSlug);
+    public TokenResponse passwordGrant(final Tenant tenant, final String username, final String password) {
         final MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "password");
         form.add("client_id", spaClientId);
@@ -112,8 +112,7 @@ public class KeycloakAuthClient {
         return postToken(tenant, form);
     }
 
-    public TokenResponse refresh(final String tenantSlug, final String refreshToken) {
-        final Tenant tenant = requireActiveTenant(tenantSlug);
+    public TokenResponse refresh(final Tenant tenant, final String refreshToken) {
         final MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "refresh_token");
         form.add("client_id", spaClientId);
@@ -132,11 +131,6 @@ public class KeycloakAuthClient {
                 throw new BadCredentialsException("Keycloak token request failed: " + resp.getStatusCode());
             })
             .body(TokenResponse.class);
-    }
-
-    private Tenant requireActiveTenant(final String slug) {
-        return tenantRepository.findBySlugAndActiveIsTrue(slug)
-            .orElseThrow(() -> new BadCredentialsException("Unknown or inactive tenant: " + slug));
     }
 
     /** Maps Keycloak's token JSON. */
@@ -164,34 +158,64 @@ public class AuthController {
 
     private final KeycloakAuthClient keycloak;
     private final TenantRepository tenantRepository;
+    private final ObjectMapper objectMapper;   // Spring Boot auto-configures this bean
 
     @MutationMapping
-    public AuthPayload login(@Argument LoginInput input) {
-        final var token = keycloak.passwordGrant(input.tenantSlug(), input.username(), input.password());
-        return toPayload(input.tenantSlug(), token);
+    public AuthPayload login(@Argument final LoginInput input) {
+        final Tenant tenant = requireActiveTenant(input.tenantSlug());
+        final var token = keycloak.passwordGrant(tenant, input.username(), input.password());
+        return toPayload(tenant, token);
     }
 
     @MutationMapping
-    public AuthPayload refreshToken(@Argument RefreshTokenInput input) {
-        final var token = keycloak.refresh(input.tenantSlug(), input.refreshToken());
-        return toPayload(input.tenantSlug(), token);
+    public AuthPayload refreshToken(@Argument final RefreshTokenInput input) {
+        final Tenant tenant = requireActiveTenant(input.tenantSlug());
+        final var token = keycloak.refresh(tenant, input.refreshToken());
+        return toPayload(tenant, token);
     }
 
-    private AuthPayload toPayload(final String tenantSlug, final KeycloakAuthClient.TokenResponse t) {
-        final Tenant tenant = tenantRepository.findBySlug(tenantSlug).orElseThrow();
-        final List<String> roles = extractRealmRoles(t.accessToken());   // decode roles for the SPA
+    private AuthPayload toPayload(final Tenant tenant, final KeycloakAuthClient.TokenResponse t) {
+        final List<String> roles = extractRealmRoles(t.accessToken());
         return new AuthPayload(t.accessToken(), t.refreshToken(), t.expiresIn(),
                                t.tokenType(), tenant, roles);
+    }
+
+    private Tenant requireActiveTenant(final String slug) {
+        return tenantRepository.findBySlugAndActiveIsTrue(slug)
+            .orElseThrow(() -> new BadCredentialsException("Unknown or inactive tenant: " + slug));
+    }
+
+    /**
+     * Decodes the JWT payload (base64url) to read {@code realm_access.roles}.
+     * The token was just minted by a trusted realm — re-verification is not needed here.
+     * This is a convenience decode for the SPA response; authorization on subsequent requests
+     * always re-validates the token via the resource server.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> extractRealmRoles(final String accessToken) {
+        try {
+            final String[] parts = accessToken.split("\\.");
+            if (parts.length < 2) {
+                return List.of();
+            }
+            final String segment = parts[1];
+            final int padding = (4 - segment.length() % 4) % 4;
+            final byte[] decoded = Base64.getUrlDecoder().decode(segment + "=".repeat(padding));
+            final Map<String, Object> claims = objectMapper.readValue(decoded, new TypeReference<>() {});
+            final Map<String, Object> realmAccess = (Map<String, Object>) claims.get("realm_access");
+            if (isNull(realmAccess)) {
+                return List.of();
+            }
+            return (List<String>) realmAccess.getOrDefault("roles", List.of());
+        } catch (final Exception ignored) {
+            return List.of();
+        }
     }
 }
 ```
 
 `login`/`refreshToken` are reachable without authentication because `SecurityConfig` permits `/graphql`
 at the HTTP layer and these methods carry **no** `@PreAuthorize`. (Every other operation does.)
-
-> `extractRealmRoles` can decode the JWT body (it was just minted by a trusted realm) to surface roles
-> for the frontend. This is convenience only; authorization always re-validates the token on subsequent
-> requests via the resource server.
 
 ---
 
@@ -204,7 +228,7 @@ caller from the current token + `AppUser` link:
 @PreAuthorize("isAuthenticated()")
 @QueryMapping
 public CurrentUser me() {
-    final AppUser user = appUserService.currentUser();          // tenant + sub -> AppUser (JIT if needed)
+    final AppUser user = appUserService.currentUser();   // JIT-provisions AppUser if first login
     final Tenant tenant = tenantRepository.findById(user.getTenantId()).orElseThrow();
     return new CurrentUser(user.getKeycloakSubject(), user.getUsername(), user.getEmail(),
                            tenant, currentRoles(), user.getMemberId(), user.getTrainerId());
@@ -214,6 +238,19 @@ public CurrentUser me() {
 @QueryMapping
 public Tenant currentTenant() {
     return tenantRepository.findById(TenantContext.getTenantId()).orElseThrow();
+}
+
+/** Reads Spring authorities from the current security context, stripping the ROLE_ prefix. */
+private static List<String> currentRoles() {
+    final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (isNull(auth)) {
+        return List.of();
+    }
+    return auth.getAuthorities().stream()
+        .map(GrantedAuthority::getAuthority)
+        .filter(a -> a.startsWith("ROLE_"))
+        .map(a -> a.substring(5))
+        .collect(Collectors.toList());
 }
 ```
 
