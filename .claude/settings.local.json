@@ -6,7 +6,24 @@
       "Bash(./gradlew test *)",
       "Bash(./gradlew build *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(python3 -m json.tool /workspace/.devcontainer/keycloak/import/wat-simmering-realm.json)",
+      "Bash(python3 -m json.tool /workspace/.devcontainer/keycloak/import/union-rot-weiss-realm.json)",
+      "Bash(python3 -m json.tool /workspace/.devcontainer/keycloak/import/asv-pressbaum-badminton-realm.json)",
+      "Bash(xargs -I{} bash -c 'jar tf {} 2>/dev/null | grep -i \"JwtIssuer\"')",
+      "Bash(jar tf *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(u['username'], u.get\\('credentials', [{}]\\)[0].get\\('value','?'\\)\\) for u in d.get\\('users',[]\\)]\")",
+      "Bash(python3 *)",
+      "Bash(chmod +x /workspace/scripts/data_loader.sh)",
+      "Bash(xargs cat)",
+      "Bash(./gradlew compileJava -x test)",
+      "Bash(./gradlew clean *)",
+      "Bash(./gradlew compileJava --no-build-cache)",
+      "Bash(grep -v \"^$\")",
+      "Bash(awk -F: '{sum+=$2} END {print \"Total test cases:\", sum}')",
+      "Bash(awk '{ *)",
+      "Bash(./gradlew compileJava compileTestJava --no-daemon)",
+      "Bash(git commit *)"
     ]
   }
 }
