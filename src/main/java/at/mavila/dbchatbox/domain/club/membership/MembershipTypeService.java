@@ -16,6 +16,8 @@ import at.mavila.dbchatbox.domain.club.notification.NotificationService;
 import at.mavila.dbchatbox.domain.club.training.Session;
 import at.mavila.dbchatbox.domain.club.training.SessionRepository;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -36,6 +38,7 @@ public class MembershipTypeService {
   private final SessionRepository sessionRepository;
   private final CommandValidator commandValidator;
   private final NotificationService notificationService;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Creates a new membership type in DRAFT status.
@@ -49,7 +52,7 @@ public class MembershipTypeService {
   public MembershipType create(final CreateMembershipTypeCommand command) {
     commandValidator.validate(command);
 
-    if (membershipTypeRepository.existsByName(command.name())) {
+    if (membershipTypeRepository.existsByNameAndTenantId(command.name(), currentTenantOrThrow())) {
       throw new DuplicateNameException("MembershipType", command.name());
     }
 
@@ -109,7 +112,7 @@ public class MembershipTypeService {
    */
   public MembershipType assignSession(final Long membershipTypeId, final Long sessionId) {
     final MembershipType type = findByIdOrThrow(membershipTypeId);
-    final Session session = sessionRepository.findById(sessionId)
+    final Session session = tenantScopedFinder.findById(sessionRepository, sessionId)
         .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
     type.getSessions().add(session);
@@ -141,10 +144,11 @@ public class MembershipTypeService {
    */
   @Transactional(readOnly = true)
   public List<MembershipType> findAll(final MembershipTypeStatus status) {
+    final Long tenantId = currentTenantOrThrow();
     if (nonNull(status)) {
-      return membershipTypeRepository.findByStatus(status);
+      return membershipTypeRepository.findByStatusAndTenantId(status, tenantId);
     }
-    return membershipTypeRepository.findAll();
+    return membershipTypeRepository.findAllByTenantId(tenantId);
   }
 
   /**
@@ -162,6 +166,15 @@ public class MembershipTypeService {
   }
 
   private MembershipType findByIdOrThrow(final Long id) {
-    return membershipTypeRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("MembershipType", id));
+    return tenantScopedFinder.findById(membershipTypeRepository, id)
+        .orElseThrow(() -> new ResourceNotFoundException("MembershipType", id));
+  }
+
+  private Long currentTenantOrThrow() {
+    final Long t = TenantContext.getTenantId();
+    if (isNull(t)) {
+      throw new IllegalStateException("No tenant in context");
+    }
+    return t;
   }
 }

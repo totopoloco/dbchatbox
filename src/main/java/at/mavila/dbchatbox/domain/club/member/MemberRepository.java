@@ -27,6 +27,17 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
   boolean existsByEmail(String email);
 
   /**
+   * Checks whether a member with the given email exists within a specific tenant.
+   *
+   * @param email
+   *                the email to check
+   * @param tenantId
+   *                the tenant ID
+   * @return {@code true} if a member with that email exists in the tenant
+   */
+  boolean existsByEmailAndTenantId(String email, Long tenantId);
+
+  /**
    * Finds a member by email address.
    *
    * @param email
@@ -48,6 +59,32 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
   boolean existsByEmailAndIdNot(@Param("email")
   String email, @Param("id")
   Long id);
+
+  /**
+   * Checks whether a member with the given email exists within a specific tenant, excluding a member ID.
+   *
+   * @param email
+   *                the email to check
+   * @param id
+   *                the member ID to exclude
+   * @param tenantId
+   *                the tenant ID
+   * @return {@code true} if another member with that email exists in the tenant
+   */
+  @Query("SELECT COUNT(m) > 0 FROM Member m WHERE m.email = :email AND m.id <> :id AND m.tenantId = :tenantId")
+  boolean existsByEmailAndIdNotAndTenantId(@Param("email")
+  String email, @Param("id")
+  Long id, @Param("tenantId")
+  Long tenantId);
+
+  /**
+   * Finds all members belonging to a specific tenant.
+   *
+   * @param tenantId
+   *                the tenant ID
+   * @return all members for that tenant
+   */
+  List<Member> findAllByTenantId(Long tenantId);
 
   /**
    * Returns the IDs of members eligible for GDPR-purge anonymization: members

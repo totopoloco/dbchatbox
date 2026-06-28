@@ -14,6 +14,8 @@ import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionRepository;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -29,6 +31,7 @@ public class PaymentService {
   private final PaymentRepository paymentRepository;
   private final MemberSubscriptionRepository subscriptionRepository;
   private final CommandValidator commandValidator;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Records a payment against a subscription.
@@ -44,7 +47,8 @@ public class PaymentService {
   public Payment recordPayment(final RecordPaymentCommand command) {
     commandValidator.validate(command);
 
-    final MemberSubscription subscription = subscriptionRepository.findById(command.memberSubscriptionId())
+    final MemberSubscription subscription = tenantScopedFinder.findById(subscriptionRepository,
+            command.memberSubscriptionId())
         .orElseThrow(() -> new ResourceNotFoundException("MemberSubscription", command.memberSubscriptionId()));
 
     if (subscription.getEndDate().isBefore(LocalDate.now())) {
@@ -83,14 +87,15 @@ public class PaymentService {
   }
 
   /**
-   * Returns outstanding payment information for all active subscriptions.
+   * Returns outstanding payment information for all active subscriptions within the current tenant.
    *
    * @return list of outstanding payment statuses
    */
   @Transactional(readOnly = true)
   public List<OutstandingPaymentInfo> findOutstandingPayments() {
     final LocalDate today = LocalDate.now();
-    return subscriptionRepository.findByEndDateGreaterThanEqual(today).stream().map(this::toOutstandingInfo)
+    return subscriptionRepository.findByEndDateGreaterThanEqualAndTenantId(today, currentTenantOrThrow()).stream()
+        .map(this::toOutstandingInfo)
         .filter(info -> info.outstanding().compareTo(BigDecimal.ZERO) > 0).toList();
   }
 
@@ -98,6 +103,14 @@ public class PaymentService {
     final BigDecimal amountPaid = paymentRepository.sumAmountByMemberSubscriptionId(subscription.getId());
     final BigDecimal outstanding = subscription.getAgreedPrice().subtract(amountPaid);
     return new OutstandingPaymentInfo(subscription, amountPaid, outstanding);
+  }
+
+  private Long currentTenantOrThrow() {
+    final Long t = TenantContext.getTenantId();
+    if (isNull(t)) {
+      throw new IllegalStateException("No tenant in context");
+    }
+    return t;
   }
 
   /**

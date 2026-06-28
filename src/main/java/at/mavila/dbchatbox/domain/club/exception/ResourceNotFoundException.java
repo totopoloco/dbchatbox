@@ -18,4 +18,16 @@ public class ResourceNotFoundException extends RuntimeException {
   public ResourceNotFoundException(final String resourceType, final Long id) {
     super("%s not found: %d".formatted(resourceType, id));
   }
+
+  /**
+   * Creates a new exception for the given resource type and string key (e.g. slug, issuer URI).
+   *
+   * @param resourceType
+   *                       the type of resource (e.g., "Tenant")
+   * @param key
+   *                       the string key that was not found
+   */
+  public ResourceNotFoundException(final String resourceType, final String key) {
+    super("%s not found: %s".formatted(resourceType, key));
+  }
 }

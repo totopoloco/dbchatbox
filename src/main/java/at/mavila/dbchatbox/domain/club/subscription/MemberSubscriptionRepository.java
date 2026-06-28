@@ -46,6 +46,17 @@ public interface MemberSubscriptionRepository extends JpaRepository<MemberSubscr
     List<MemberSubscription> findByEndDateGreaterThanEqual(LocalDate today);
 
     /**
+     * Finds all active subscriptions for a specific tenant.
+     *
+     * @param today
+     *              the current date
+     * @param tenantId
+     *              the tenant ID
+     * @return all active subscriptions for the tenant
+     */
+    List<MemberSubscription> findByEndDateGreaterThanEqualAndTenantId(LocalDate today, Long tenantId);
+
+    /**
      * Checks if any subscriptions reference a given membership type.
      *
      * @param membershipTypeId

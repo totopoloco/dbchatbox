@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.util.Optional;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +25,8 @@ import at.mavila.dbchatbox.domain.club.notification.NotificationService;
 import at.mavila.dbchatbox.domain.club.training.Session;
 import at.mavila.dbchatbox.domain.club.training.SessionRepository;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 
 @ExtendWith(MockitoExtension.class)
 class MembershipTypeServiceTest {
@@ -39,15 +43,28 @@ class MembershipTypeServiceTest {
   @Mock
   private NotificationService notificationService;
 
+  @Mock
+  private TenantScopedFinder tenantScopedFinder;
+
   @InjectMocks
   private MembershipTypeService service;
+
+  @BeforeEach
+  void setUpTenant() {
+    TenantContext.setTenantId(1L);
+  }
+
+  @AfterEach
+  void clearTenant() {
+    TenantContext.clear();
+  }
 
   @Nested
   class Create {
 
     @Test
     void shouldCreateInDraftStatus() {
-      when(membershipTypeRepository.existsByName("Gold")).thenReturn(false);
+      when(membershipTypeRepository.existsByNameAndTenantId("Gold", 1L)).thenReturn(false);
       when(membershipTypeRepository.save(any(MembershipType.class))).thenAnswer(inv -> inv.getArgument(0));
 
       final MembershipType result = service.create(
@@ -59,7 +76,7 @@ class MembershipTypeServiceTest {
 
     @Test
     void shouldRejectDuplicateName() {
-      when(membershipTypeRepository.existsByName("Gold")).thenReturn(true);
+      when(membershipTypeRepository.existsByNameAndTenantId("Gold", 1L)).thenReturn(true);
 
       assertThatThrownBy(
           () -> service.create(new CreateMembershipTypeCommand("Gold", "Desc", BigDecimal.TEN, 1, Unit.MONTHS, false, null)))
@@ -68,7 +85,7 @@ class MembershipTypeServiceTest {
 
     @Test
     void shouldSetGracePeriodDaysWhenProvided() {
-      when(membershipTypeRepository.existsByName("Silver")).thenReturn(false);
+      when(membershipTypeRepository.existsByNameAndTenantId("Silver", 1L)).thenReturn(false);
       when(membershipTypeRepository.save(any(MembershipType.class))).thenAnswer(inv -> inv.getArgument(0));
 
       final MembershipType result = service.create(
@@ -79,7 +96,7 @@ class MembershipTypeServiceTest {
 
     @Test
     void shouldDefaultGracePeriodDaysTo30WhenNull() {
-      when(membershipTypeRepository.existsByName("Bronze")).thenReturn(false);
+      when(membershipTypeRepository.existsByNameAndTenantId("Bronze", 1L)).thenReturn(false);
       when(membershipTypeRepository.save(any(MembershipType.class))).thenAnswer(inv -> inv.getArgument(0));
 
       final MembershipType result = service.create(
@@ -96,7 +113,7 @@ class MembershipTypeServiceTest {
     void shouldAllowDraftToActive() {
       final MembershipType type = MembershipType.builder().id(1L).name("Gold").status(MembershipTypeStatus.DRAFT)
           .build();
-      when(membershipTypeRepository.findById(1L)).thenReturn(Optional.of(type));
+      when(tenantScopedFinder.findById(membershipTypeRepository, 1L)).thenReturn(Optional.of(type));
       when(membershipTypeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
       final MembershipType result = service.changeStatus(1L, MembershipTypeStatus.ACTIVE);
@@ -108,7 +125,7 @@ class MembershipTypeServiceTest {
     void shouldNotifyWhenTransitioningFromDraftToActive() {
       final MembershipType type = MembershipType.builder().id(1L).name("Gold").status(MembershipTypeStatus.DRAFT)
           .build();
-      when(membershipTypeRepository.findById(1L)).thenReturn(Optional.of(type));
+      when(tenantScopedFinder.findById(membershipTypeRepository, 1L)).thenReturn(Optional.of(type));
       when(membershipTypeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
       service.changeStatus(1L, MembershipTypeStatus.ACTIVE);
@@ -120,7 +137,7 @@ class MembershipTypeServiceTest {
     void shouldRejectActiveToDeleted() {
       final MembershipType type = MembershipType.builder().id(1L).name("Gold").status(MembershipTypeStatus.ACTIVE)
           .build();
-      when(membershipTypeRepository.findById(1L)).thenReturn(Optional.of(type));
+      when(tenantScopedFinder.findById(membershipTypeRepository, 1L)).thenReturn(Optional.of(type));
 
       assertThatThrownBy(() -> service.changeStatus(1L, MembershipTypeStatus.DRAFT))
           .isInstanceOf(InvalidStatusTransitionException.class);
@@ -136,8 +153,8 @@ class MembershipTypeServiceTest {
           .build();
       final Session session = Session.builder().id(10L).name("Yoga").build();
 
-      when(membershipTypeRepository.findById(1L)).thenReturn(Optional.of(type));
-      when(sessionRepository.findById(10L)).thenReturn(Optional.of(session));
+      when(tenantScopedFinder.findById(membershipTypeRepository, 1L)).thenReturn(Optional.of(type));
+      when(tenantScopedFinder.findById(sessionRepository, 10L)).thenReturn(Optional.of(session));
       when(membershipTypeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
       final MembershipType result = service.assignSession(1L, 10L);
@@ -148,8 +165,7 @@ class MembershipTypeServiceTest {
     @Test
     void shouldThrowWhenSessionNotFound() {
       final MembershipType type = MembershipType.builder().id(1L).name("Gold").build();
-      when(membershipTypeRepository.findById(1L)).thenReturn(Optional.of(type));
-      when(sessionRepository.findById(999L)).thenReturn(Optional.empty());
+      when(tenantScopedFinder.findById(membershipTypeRepository, 1L)).thenReturn(Optional.of(type));
 
       assertThatThrownBy(() -> service.assignSession(1L, 999L)).isInstanceOf(ResourceNotFoundException.class);
     }

@@ -13,6 +13,8 @@ import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.MemberDeletedException;
 import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -33,6 +35,7 @@ public class MemberService {
   private final MemberRepository memberRepository;
   private final MemberStatusHistoryRepository statusHistoryRepository;
   private final CommandValidator commandValidator;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Registers a new member and creates an initial ACTIVE status entry.
@@ -46,7 +49,7 @@ public class MemberService {
   public Member createMember(final CreateMemberCommand command) {
     commandValidator.validate(command);
 
-    if (memberRepository.existsByEmail(command.email())) {
+    if (memberRepository.existsByEmailAndTenantId(command.email(), currentTenantOrThrow())) {
       throw new DuplicateEmailException(command.email());
     }
 
@@ -87,7 +90,8 @@ public class MemberService {
       member.setLastName(command.lastName());
     }
     if (nonNull(command.email()) && !command.email().equals(member.getEmail())) {
-      if (memberRepository.existsByEmailAndIdNot(command.email(), id)) {
+      final Long tenantId = currentTenantOrThrow();
+      if (memberRepository.existsByEmailAndIdNotAndTenantId(command.email(), id, tenantId)) {
         throw new DuplicateEmailException(command.email());
       }
       member.setEmail(command.email());
@@ -150,10 +154,11 @@ public class MemberService {
   @Transactional(readOnly = true)
   public List<Member> findAll(final Status status) {
     if (isNull(status)) {
-      return memberRepository.findAll();
+      return memberRepository.findAllByTenantId(currentTenantOrThrow());
     }
 
-    return memberRepository.findAll().stream().filter(member -> getCurrentStatus(member).equals(status)).toList();
+    return memberRepository.findAllByTenantId(currentTenantOrThrow()).stream()
+        .filter(member -> getCurrentStatus(member).equals(status)).toList();
   }
 
   /**
@@ -183,7 +188,8 @@ public class MemberService {
   }
 
   private Member findByIdOrThrow(final Long id) {
-    return memberRepository.findById(id).orElseThrow(() -> new MemberNotFoundException(id));
+    return tenantScopedFinder.findById(memberRepository, id)
+        .orElseThrow(() -> new MemberNotFoundException(id));
   }
 
   private void guardDeleted(final Member member) {
@@ -196,5 +202,13 @@ public class MemberService {
     final MemberStatusHistory entry = MemberStatusHistory.builder().member(member).status(status)
         .changedAt(LocalDateTime.now()).reason(reason).build();
     return statusHistoryRepository.save(entry);
+  }
+
+  private Long currentTenantOrThrow() {
+    final Long t = TenantContext.getTenantId();
+    if (isNull(t)) {
+      throw new IllegalStateException("No tenant in context");
+    }
+    return t;
   }
 }

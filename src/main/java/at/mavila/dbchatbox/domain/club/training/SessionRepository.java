@@ -28,6 +28,26 @@ public interface SessionRepository extends JpaRepository<Session, Long> {
   List<Session> findBySessionType(SessionType sessionType);
 
   /**
+   * Finds all sessions of the given type within a specific tenant.
+   *
+   * @param sessionType
+   *                      the session type filter
+   * @param tenantId
+   *                      the tenant ID
+   * @return matching sessions for the tenant
+   */
+  List<Session> findBySessionTypeAndTenantId(SessionType sessionType, Long tenantId);
+
+  /**
+   * Finds all sessions belonging to a specific tenant.
+   *
+   * @param tenantId
+   *                the tenant ID
+   * @return all sessions for that tenant
+   */
+  List<Session> findAllByTenantId(Long tenantId);
+
+  /**
    * Finds all sessions assigned to a trainer on a given day of the week.
    *
    * @param trainerId

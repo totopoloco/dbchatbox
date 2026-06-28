@@ -11,6 +11,8 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +25,8 @@ import at.mavila.dbchatbox.domain.club.exception.OverlapException;
 import at.mavila.dbchatbox.domain.club.trainer.Trainer;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerRepository;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 
 @ExtendWith(MockitoExtension.class)
 class SessionServiceTest {
@@ -33,9 +37,21 @@ class SessionServiceTest {
   private TrainerRepository trainerRepository;
   @Mock
   private CommandValidator commandValidator;
+  @Mock
+  private TenantScopedFinder tenantScopedFinder;
 
   @InjectMocks
   private SessionService sessionService;
+
+  @BeforeEach
+  void setUpTenant() {
+    TenantContext.setTenantId(1L);
+  }
+
+  @AfterEach
+  void clearTenant() {
+    TenantContext.clear();
+  }
 
   @Nested
   class CreateSession {
@@ -44,7 +60,7 @@ class SessionServiceTest {
     void shouldCreateTrainingSession() {
       final Trainer trainer = Trainer.builder().id(1L).firstName("Bob").lastName("T").email("bob@test.com").build();
 
-      when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
+      when(tenantScopedFinder.findById(trainerRepository, 1L)).thenReturn(Optional.of(trainer));
       when(sessionRepository.findByTrainerIdAndDayOfWeek(1L, DayOfWeek.MONDAY)).thenReturn(List.of());
       when(sessionRepository.findByLocationAndDayOfWeek("Room A", DayOfWeek.MONDAY)).thenReturn(List.of());
       when(sessionRepository.save(any(Session.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -95,7 +111,7 @@ class SessionServiceTest {
       final Session existing = Session.builder().id(99L).startTime(LocalTime.of(9, 30)).endTime(LocalTime.of(10, 30))
           .build();
 
-      when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
+      when(tenantScopedFinder.findById(trainerRepository, 1L)).thenReturn(Optional.of(trainer));
       when(sessionRepository.findByTrainerIdAndDayOfWeek(1L, DayOfWeek.MONDAY)).thenReturn(List.of(existing));
 
       assertThatThrownBy(() -> sessionService.createSession(new CreateSessionCommand("Pilates", SessionType.TRAINING,
@@ -124,9 +140,7 @@ class SessionServiceTest {
       final Trainer busy = Trainer.builder().id(1L).firstName("Busy").lastName("T").email("busy@t.com").build();
       final Trainer free = Trainer.builder().id(2L).firstName("Free").lastName("T").email("free@t.com").build();
 
-      when(trainerRepository.findAll()).thenReturn(List.of(busy, free));
-      // The repository now returns the busy-trainer ID set in one query —
-      // no per-trainer round trip.
+      when(trainerRepository.findAllByTenantId(1L)).thenReturn(List.of(busy, free));
       when(sessionRepository.findBusyTrainerIdsForSlot(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(10, 0)))
           .thenReturn(java.util.Set.of(1L));
 

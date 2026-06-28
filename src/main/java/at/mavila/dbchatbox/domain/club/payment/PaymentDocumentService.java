@@ -19,6 +19,7 @@ import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionRepository;
 import at.mavila.dbchatbox.domain.club.subscription.SubscriptionPaymentStatus;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -45,6 +46,7 @@ public class PaymentDocumentService {
   private final PaymentDocumentRepository paymentDocumentRepository;
   private final MemberSubscriptionRepository subscriptionRepository;
   private final CommandValidator commandValidator;
+  private final TenantScopedFinder tenantScopedFinder;
 
   @Value("${app.payment.max-document-size-bytes:10485760}")
   private long maxDocumentSizeBytes;
@@ -72,7 +74,8 @@ public class PaymentDocumentService {
   public PaymentDocument uploadDocument(final UploadPaymentDocumentCommand command) {
     commandValidator.validate(command);
 
-    final MemberSubscription subscription = subscriptionRepository.findById(command.memberSubscriptionId())
+    final MemberSubscription subscription = tenantScopedFinder.findById(subscriptionRepository,
+            command.memberSubscriptionId())
         .orElseThrow(() -> new ResourceNotFoundException("MemberSubscription", command.memberSubscriptionId()));
 
     if (subscription.getPaymentStatus() != SubscriptionPaymentStatus.NOT_PAID) {
@@ -89,7 +92,6 @@ public class PaymentDocumentService {
               maxDocumentSizeBytes));
     }
 
-    // Store the file
     final String filePath = storeFile(subscription.getId(), command.fileName(), fileBytes);
 
     final PaymentDocument document = PaymentDocument.builder()
@@ -104,7 +106,6 @@ public class PaymentDocumentService {
 
     final PaymentDocument saved = paymentDocumentRepository.save(document);
 
-    // Transition payment status to IN_REVIEW
     subscription.setPaymentStatus(SubscriptionPaymentStatus.IN_REVIEW);
     subscriptionRepository.save(subscription);
 
@@ -129,7 +130,8 @@ public class PaymentDocumentService {
   public MemberSubscription reviewDocument(final ReviewPaymentDocumentCommand command) {
     commandValidator.validate(command);
 
-    final MemberSubscription subscription = subscriptionRepository.findById(command.memberSubscriptionId())
+    final MemberSubscription subscription = tenantScopedFinder.findById(subscriptionRepository,
+            command.memberSubscriptionId())
         .orElseThrow(() -> new ResourceNotFoundException("MemberSubscription", command.memberSubscriptionId()));
 
     if (subscription.getPaymentStatus() != SubscriptionPaymentStatus.IN_REVIEW) {

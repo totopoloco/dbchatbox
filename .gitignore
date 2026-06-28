@@ -33,5 +33,9 @@ out/
 /nbdist/
 /.nb-gradle/
 
+### Security — never commit these ###
+scripts/keycloak-credentials.txt
+.env
+
 ### VS Code ###
 # .vscode/ is tracked intentionally — contains shared IDE settings, launch configs and extensions

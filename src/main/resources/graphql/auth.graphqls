@@ -1,0 +1,59 @@
+extend type Query {
+  "Current authenticated user. Requires JWT authentication (not API key)."
+  me: CurrentUser!
+
+  "The tenant resolved from the current authentication token."
+  currentTenant: Tenant!
+}
+
+extend type Mutation {
+  """
+  Authenticate against a Keycloak realm via direct-access grant.
+  Intended for the PoC data loader and SPA development only — production SPAs
+  should use PKCE. Returns short-lived access + refresh tokens.
+  """
+  login(input: LoginInput!): AuthPayload!
+
+  "Exchange a refresh token for a new access token."
+  refreshToken(input: RefreshTokenInput!): AuthPayload!
+}
+
+type Tenant {
+  id: ID!
+  slug: String!
+  name: String!
+  keycloakRealm: String!
+  active: Boolean!
+}
+
+type CurrentUser {
+  id: ID!
+  "Keycloak sub claim — needed by admins to call linkAppUser."
+  keycloakSubject: String!
+  username: String!
+  email: String
+  "The domain Member linked to this identity, if any."
+  memberId: ID
+  "The domain Trainer linked to this identity, if any."
+  trainerId: ID
+  active: Boolean!
+}
+
+type AuthPayload {
+  accessToken: String!
+  refreshToken: String!
+  expiresIn: Int!
+  tokenType: String!
+}
+
+input LoginInput {
+  "Tenant slug that identifies the Keycloak realm to authenticate against."
+  tenantSlug: String!
+  username: String!
+  password: String!
+}
+
+input RefreshTokenInput {
+  tenantSlug: String!
+  refreshToken: String!
+}

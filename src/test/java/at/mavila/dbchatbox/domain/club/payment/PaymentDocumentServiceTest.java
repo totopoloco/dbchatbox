@@ -13,6 +13,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,8 @@ import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionRepository;
 import at.mavila.dbchatbox.domain.club.subscription.SubscriptionPaymentStatus;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentDocumentServiceTest {
@@ -42,6 +45,9 @@ class PaymentDocumentServiceTest {
   @Mock
   private CommandValidator commandValidator;
 
+  @Mock
+  private TenantScopedFinder tenantScopedFinder;
+
   @InjectMocks
   private PaymentDocumentService service;
 
@@ -52,6 +58,7 @@ class PaymentDocumentServiceTest {
 
   @BeforeEach
   void setUp() {
+    TenantContext.setTenantId(1L);
     ReflectionTestUtils.setField(service, "maxDocumentSizeBytes", 10_485_760L);
     ReflectionTestUtils.setField(service, "storagePath", tempDir.toString());
 
@@ -64,12 +71,17 @@ class PaymentDocumentServiceTest {
         .build();
   }
 
+  @AfterEach
+  void clearTenant() {
+    TenantContext.clear();
+  }
+
   @Nested
   class UploadDocument {
 
     @Test
     void shouldUploadDocumentAndTransitionToInReview() {
-      when(subscriptionRepository.findById(1L)).thenReturn(Optional.of(subscription));
+      when(tenantScopedFinder.findById(subscriptionRepository, 1L)).thenReturn(Optional.of(subscription));
       when(paymentDocumentRepository.save(any(PaymentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
       when(subscriptionRepository.save(any(MemberSubscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -86,8 +98,6 @@ class PaymentDocumentServiceTest {
 
     @Test
     void shouldRejectWhenSubscriptionNotFound() {
-      when(subscriptionRepository.findById(999L)).thenReturn(Optional.empty());
-
       final String content = Base64.getEncoder().encodeToString("PDF".getBytes());
       final var command = new UploadPaymentDocumentCommand(999L, "payment.pdf", content, null);
 
@@ -98,7 +108,7 @@ class PaymentDocumentServiceTest {
     @Test
     void shouldRejectWhenPaymentStatusNotNotPaid() {
       subscription.setPaymentStatus(SubscriptionPaymentStatus.IN_REVIEW);
-      when(subscriptionRepository.findById(1L)).thenReturn(Optional.of(subscription));
+      when(tenantScopedFinder.findById(subscriptionRepository, 1L)).thenReturn(Optional.of(subscription));
 
       final String content = Base64.getEncoder().encodeToString("PDF".getBytes());
       final var command = new UploadPaymentDocumentCommand(1L, "payment.pdf", content, null);
@@ -111,7 +121,7 @@ class PaymentDocumentServiceTest {
     @Test
     void shouldRejectWhenFileTooLarge() {
       ReflectionTestUtils.setField(service, "maxDocumentSizeBytes", 5L);
-      when(subscriptionRepository.findById(1L)).thenReturn(Optional.of(subscription));
+      when(tenantScopedFinder.findById(subscriptionRepository, 1L)).thenReturn(Optional.of(subscription));
 
       final String content = Base64.getEncoder().encodeToString("This content exceeds 5 bytes".getBytes());
       final var command = new UploadPaymentDocumentCommand(1L, "payment.pdf", content, null);
@@ -128,7 +138,7 @@ class PaymentDocumentServiceTest {
     @Test
     void shouldApproveAndTransitionToReviewed() {
       subscription.setPaymentStatus(SubscriptionPaymentStatus.IN_REVIEW);
-      when(subscriptionRepository.findById(1L)).thenReturn(Optional.of(subscription));
+      when(tenantScopedFinder.findById(subscriptionRepository, 1L)).thenReturn(Optional.of(subscription));
       when(subscriptionRepository.save(any(MemberSubscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
       final var command = new ReviewPaymentDocumentCommand(1L, true, null);
@@ -140,7 +150,7 @@ class PaymentDocumentServiceTest {
     @Test
     void shouldRejectAndTransitionBackToNotPaid() {
       subscription.setPaymentStatus(SubscriptionPaymentStatus.IN_REVIEW);
-      when(subscriptionRepository.findById(1L)).thenReturn(Optional.of(subscription));
+      when(tenantScopedFinder.findById(subscriptionRepository, 1L)).thenReturn(Optional.of(subscription));
       when(subscriptionRepository.save(any(MemberSubscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
       final var command = new ReviewPaymentDocumentCommand(1L, false, "Amount does not match");
@@ -152,7 +162,7 @@ class PaymentDocumentServiceTest {
     @Test
     void shouldRejectWhenStatusNotInReview() {
       subscription.setPaymentStatus(SubscriptionPaymentStatus.NOT_PAID);
-      when(subscriptionRepository.findById(1L)).thenReturn(Optional.of(subscription));
+      when(tenantScopedFinder.findById(subscriptionRepository, 1L)).thenReturn(Optional.of(subscription));
 
       final var command = new ReviewPaymentDocumentCommand(1L, true, null);
 
@@ -164,7 +174,7 @@ class PaymentDocumentServiceTest {
     @Test
     void shouldRequireReasonWhenRejecting() {
       subscription.setPaymentStatus(SubscriptionPaymentStatus.IN_REVIEW);
-      when(subscriptionRepository.findById(1L)).thenReturn(Optional.of(subscription));
+      when(tenantScopedFinder.findById(subscriptionRepository, 1L)).thenReturn(Optional.of(subscription));
 
       final var command = new ReviewPaymentDocumentCommand(1L, false, null);
 

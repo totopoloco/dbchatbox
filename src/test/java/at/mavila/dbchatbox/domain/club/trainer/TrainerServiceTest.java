@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.util.Optional;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +21,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 
 @ExtendWith(MockitoExtension.class)
 class TrainerServiceTest {
@@ -29,16 +33,28 @@ class TrainerServiceTest {
   private TrainerSettingsRepository trainerSettingsRepository;
   @Mock
   private CommandValidator commandValidator;
+  @Mock
+  private TenantScopedFinder tenantScopedFinder;
 
   @InjectMocks
   private TrainerService service;
+
+  @BeforeEach
+  void setUpTenant() {
+    TenantContext.setTenantId(1L);
+  }
+
+  @AfterEach
+  void clearTenant() {
+    TenantContext.clear();
+  }
 
   @Nested
   class CreateTrainer {
 
     @Test
     void shouldCreateTrainerAndSettings() {
-      when(trainerRepository.existsByEmail("karl@example.com")).thenReturn(false);
+      when(trainerRepository.existsByEmailAndTenantId("karl@example.com", 1L)).thenReturn(false);
       when(trainerRepository.save(any(Trainer.class))).thenAnswer(inv -> {
         final Trainer t = inv.getArgument(0);
         t.setId(1L);
@@ -56,7 +72,7 @@ class TrainerServiceTest {
 
     @Test
     void shouldCreateSettingsWithDefaultAutoApproveWhenNull() {
-      when(trainerRepository.existsByEmail("eva@example.com")).thenReturn(false);
+      when(trainerRepository.existsByEmailAndTenantId("eva@example.com", 1L)).thenReturn(false);
       when(trainerRepository.save(any(Trainer.class))).thenAnswer(inv -> {
         final Trainer t = inv.getArgument(0);
         t.setId(2L);
@@ -74,7 +90,7 @@ class TrainerServiceTest {
 
     @Test
     void shouldRejectDuplicateEmail() {
-      when(trainerRepository.existsByEmail("karl@example.com")).thenReturn(true);
+      when(trainerRepository.existsByEmailAndTenantId("karl@example.com", 1L)).thenReturn(true);
 
       assertThatThrownBy(() -> service.createTrainer(new CreateTrainerCommand("Karl", "Weber", "karl@example.com", null,
           BigDecimal.valueOf(45), TrainerPaymentMode.PER_SESSION, false))).isInstanceOf(DuplicateEmailException.class);
@@ -88,7 +104,7 @@ class TrainerServiceTest {
     void shouldUpdateContactDetails() {
       final Trainer trainer = Trainer.builder().id(1L).firstName("Karl").lastName("Weber").email("karl@example.com")
           .build();
-      when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
+      when(tenantScopedFinder.findById(trainerRepository, 1L)).thenReturn(Optional.of(trainer));
       when(trainerRepository.save(any(Trainer.class))).thenAnswer(inv -> inv.getArgument(0));
 
       final Trainer result = service.updateTrainer(1L, new UpdateTrainerCommand("Karl-Heinz", null, null, "+43999"));
@@ -102,8 +118,8 @@ class TrainerServiceTest {
     void shouldRejectDuplicateEmailOnUpdate() {
       final Trainer trainer = Trainer.builder().id(1L).firstName("Karl").lastName("Weber").email("karl@example.com")
           .build();
-      when(trainerRepository.findById(1L)).thenReturn(Optional.of(trainer));
-      when(trainerRepository.existsByEmailAndIdNot("taken@example.com", 1L)).thenReturn(true);
+      when(tenantScopedFinder.findById(trainerRepository, 1L)).thenReturn(Optional.of(trainer));
+      when(trainerRepository.existsByEmailAndIdNotAndTenantId("taken@example.com", 1L, 1L)).thenReturn(true);
 
       assertThatThrownBy(
           () -> service.updateTrainer(1L, new UpdateTrainerCommand(null, null, "taken@example.com", null)))
@@ -112,8 +128,6 @@ class TrainerServiceTest {
 
     @Test
     void shouldThrowWhenTrainerNotFound() {
-      when(trainerRepository.findById(999L)).thenReturn(Optional.empty());
-
       assertThatThrownBy(() -> service.updateTrainer(999L, new UpdateTrainerCommand("X", null, null, null)))
           .isInstanceOf(ResourceNotFoundException.class).hasMessageContaining("Trainer");
     }
@@ -128,6 +142,7 @@ class TrainerServiceTest {
       final TrainerSettings settings = TrainerSettings.builder().id(1001L).trainer(trainer)
           .hourlyRate(BigDecimal.valueOf(50)).paymentMode(TrainerPaymentMode.PER_SESSION).autoApproveHours(false)
           .build();
+      when(tenantScopedFinder.findById(trainerRepository, 1L)).thenReturn(Optional.of(trainer));
       when(trainerSettingsRepository.findByTrainerId(1L)).thenReturn(Optional.of(settings));
       when(trainerSettingsRepository.save(any(TrainerSettings.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -144,6 +159,7 @@ class TrainerServiceTest {
       final TrainerSettings settings = TrainerSettings.builder().id(1001L).trainer(trainer)
           .hourlyRate(BigDecimal.valueOf(50)).paymentMode(TrainerPaymentMode.PER_SESSION).autoApproveHours(false)
           .build();
+      when(tenantScopedFinder.findById(trainerRepository, 1L)).thenReturn(Optional.of(trainer));
       when(trainerSettingsRepository.findByTrainerId(1L)).thenReturn(Optional.of(settings));
       when(trainerSettingsRepository.save(any(TrainerSettings.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -156,11 +172,9 @@ class TrainerServiceTest {
 
     @Test
     void shouldThrowWhenSettingsNotFound() {
-      when(trainerSettingsRepository.findByTrainerId(999L)).thenReturn(Optional.empty());
-
       assertThatThrownBy(() -> service.updateTrainerSettings(999L,
           new UpdateTrainerSettingsCommand(BigDecimal.valueOf(50), null, null)))
-          .isInstanceOf(ResourceNotFoundException.class).hasMessageContaining("TrainerSettings");
+          .isInstanceOf(ResourceNotFoundException.class).hasMessageContaining("Trainer");
     }
   }
 
@@ -173,6 +187,7 @@ class TrainerServiceTest {
       final TrainerSettings settings = TrainerSettings.builder().id(1001L).trainer(trainer)
           .hourlyRate(BigDecimal.valueOf(50)).paymentMode(TrainerPaymentMode.PER_SESSION).autoApproveHours(false)
           .build();
+      when(tenantScopedFinder.findById(trainerRepository, 1L)).thenReturn(Optional.of(trainer));
       when(trainerSettingsRepository.findByTrainerId(1L)).thenReturn(Optional.of(settings));
 
       final TrainerSettings result = service.findSettingsByTrainerId(1L);
@@ -182,8 +197,6 @@ class TrainerServiceTest {
 
     @Test
     void shouldThrowWhenNotFound() {
-      when(trainerSettingsRepository.findByTrainerId(999L)).thenReturn(Optional.empty());
-
       assertThatThrownBy(() -> service.findSettingsByTrainerId(999L)).isInstanceOf(ResourceNotFoundException.class);
     }
   }

@@ -61,7 +61,8 @@
   "forwardPorts": [
     8080,
     5005,
-    8081
+    8081,
+    8088
   ],
   "portsAttributes": {
     "8080": {
@@ -74,6 +75,10 @@
     },
     "8081": {
       "label": "Actuator",
+      "onAutoForward": "silent"
+    },
+    "8088": {
+      "label": "Keycloak",
       "onAutoForward": "silent"
     }
   },

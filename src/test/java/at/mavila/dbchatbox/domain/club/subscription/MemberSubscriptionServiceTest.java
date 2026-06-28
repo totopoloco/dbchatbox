@@ -7,6 +7,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +21,8 @@ import at.mavila.dbchatbox.domain.club.member.MemberService;
 import at.mavila.dbchatbox.domain.club.membership.MembershipType;
 import at.mavila.dbchatbox.domain.club.membership.MembershipTypeRepository;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 
 @ExtendWith(MockitoExtension.class)
 class MemberSubscriptionServiceTest {
@@ -38,8 +42,21 @@ class MemberSubscriptionServiceTest {
   @Mock
   private MemberService memberService;
 
+  @Mock
+  private TenantScopedFinder tenantScopedFinder;
+
   @InjectMocks
   private MemberSubscriptionService service;
+
+  @BeforeEach
+  void setUpTenant() {
+    TenantContext.setTenantId(1L);
+  }
+
+  @AfterEach
+  void clearTenant() {
+    TenantContext.clear();
+  }
 
   @Nested
   class FindOverdueSubscriptions {

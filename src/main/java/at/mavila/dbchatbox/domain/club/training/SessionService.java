@@ -16,6 +16,8 @@ import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.club.trainer.Trainer;
 import at.mavila.dbchatbox.domain.club.trainer.TrainerRepository;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -31,6 +33,7 @@ public class SessionService {
   private final SessionRepository sessionRepository;
   private final TrainerRepository trainerRepository;
   private final CommandValidator commandValidator;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Creates a new recurring session.
@@ -48,7 +51,7 @@ public class SessionService {
 
     Trainer trainer = null;
     if (nonNull(command.trainerId())) {
-      trainer = trainerRepository.findById(command.trainerId())
+      trainer = tenantScopedFinder.findById(trainerRepository, command.trainerId())
           .orElseThrow(() -> new ResourceNotFoundException("Trainer", command.trainerId()));
       checkOverlap(sessionRepository.findByTrainerIdAndDayOfWeek(command.trainerId(), command.dayOfWeek()),
           command.startTime(), command.endTime(), null,
@@ -75,10 +78,11 @@ public class SessionService {
    */
   @Transactional(readOnly = true)
   public List<Session> findAll(final SessionType sessionType) {
+    final Long tenantId = currentTenantOrThrow();
     if (nonNull(sessionType)) {
-      return sessionRepository.findBySessionType(sessionType);
+      return sessionRepository.findBySessionTypeAndTenantId(sessionType, tenantId);
     }
-    return sessionRepository.findAll();
+    return sessionRepository.findAllByTenantId(tenantId);
   }
 
   /**
@@ -92,7 +96,8 @@ public class SessionService {
    */
   @Transactional(readOnly = true)
   public Session findById(final Long id) {
-    return sessionRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Session", id));
+    return tenantScopedFinder.findById(sessionRepository, id)
+        .orElseThrow(() -> new ResourceNotFoundException("Session", id));
   }
 
   /**
@@ -111,7 +116,7 @@ public class SessionService {
       final LocalTime endTime) {
     final java.util.Set<Long> busyTrainerIds =
         sessionRepository.findBusyTrainerIdsForSlot(dayOfWeek, startTime, endTime);
-    return trainerRepository.findAll().stream()
+    return trainerRepository.findAllByTenantId(currentTenantOrThrow()).stream()
         .filter(trainer -> !busyTrainerIds.contains(trainer.getId()))
         .toList();
   }
@@ -132,5 +137,13 @@ public class SessionService {
   private boolean timesOverlap(final LocalTime start1, final LocalTime end1, final LocalTime start2,
       final LocalTime end2) {
     return start1.isBefore(end2) && start2.isBefore(end1);
+  }
+
+  private Long currentTenantOrThrow() {
+    final Long t = TenantContext.getTenantId();
+    if (isNull(t)) {
+      throw new IllegalStateException("No tenant in context");
+    }
+    return t;
   }
 }

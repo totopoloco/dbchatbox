@@ -6,8 +6,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.graphql.test.autoconfigure.tester.AutoConfigureHttpGraphQlTester;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.graphql.test.tester.HttpGraphQlTester;
+
+import at.mavila.dbchatbox.TenantAwareIntegrationTest;
 
 /**
  * Integration tests verifying that all {@code DateTime!} schema fields serialize correctly when the backing Java type
@@ -20,10 +21,9 @@ import org.springframework.graphql.test.tester.HttpGraphQlTester;
  *
  * @since 2026-05-01
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureHttpGraphQlTester
-@AutoConfigureWebTestClient(timeout = "30s")
-class DateTimeScalarTest {
+class DateTimeScalarTest extends TenantAwareIntegrationTest {
 
   @Autowired
   private HttpGraphQlTester graphQlTester;

@@ -18,6 +18,7 @@ import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceRepository;
 import at.mavila.dbchatbox.domain.club.training.SessionOccurrenceStatus;
 import at.mavila.dbchatbox.domain.club.training.SessionType;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -37,6 +38,7 @@ public class TrainerLogService {
   private final TrainerSettingsRepository trainerSettingsRepository;
   private final SessionOccurrenceRepository occurrenceRepository;
   private final CommandValidator commandValidator;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Admin directly logs hours for a trainer (bypasses approval — status set to APPROVED).
@@ -193,7 +195,8 @@ public class TrainerLogService {
   }
 
   private Trainer findTrainer(final Long trainerId) {
-    return trainerRepository.findById(trainerId).orElseThrow(() -> new ResourceNotFoundException("Trainer", trainerId));
+    return tenantScopedFinder.findById(trainerRepository, trainerId)
+        .orElseThrow(() -> new ResourceNotFoundException("Trainer", trainerId));
   }
 
   private TrainerLog createLogEntry(final LogTrainerHoursCommand command, final TrainerLogStatus status,
@@ -233,12 +236,13 @@ public class TrainerLogService {
   }
 
   private SessionOccurrence findOccurrence(final Long occurrenceId) {
-    return occurrenceRepository.findById(occurrenceId)
+    return tenantScopedFinder.findById(occurrenceRepository, occurrenceId)
         .orElseThrow(() -> new ResourceNotFoundException("SessionOccurrence", occurrenceId));
   }
 
   private TrainerLog findLogOrThrow(final Long id) {
-    return trainerLogRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("TrainerLog", id));
+    return tenantScopedFinder.findById(trainerLogRepository, id)
+        .orElseThrow(() -> new ResourceNotFoundException("TrainerLog", id));
   }
 
   private void validateOccurrenceForLogging(final SessionOccurrence occurrence, final Trainer trainer) {

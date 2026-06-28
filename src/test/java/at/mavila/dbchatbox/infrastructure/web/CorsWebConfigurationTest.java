@@ -8,6 +8,8 @@ import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTest
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import at.mavila.dbchatbox.TenantAwareIntegrationTest;
+
 /**
  * Integration tests for CORS configuration applied to the GraphQL endpoint.
  *
@@ -28,7 +30,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
         "spring.ai.anthropic.api-key=test-only",
         "app.cors.allowed-origins=http://localhost:3000"
 })
-class CorsWebConfigurationTest {
+class CorsWebConfigurationTest extends TenantAwareIntegrationTest {
 
     @Autowired
     private WebTestClient webTestClient;

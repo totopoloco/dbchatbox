@@ -23,6 +23,7 @@ import at.mavila.dbchatbox.domain.club.membership.MembershipType;
 import at.mavila.dbchatbox.domain.club.membership.MembershipTypeRepository;
 import at.mavila.dbchatbox.domain.club.membership.MembershipTypeStatus;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -41,6 +42,7 @@ public class MemberSubscriptionService {
   private final MembershipTypeRepository membershipTypeRepository;
   private final CommandValidator commandValidator;
   private final MemberService memberService;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Subscribes a member to a membership type.
@@ -60,14 +62,14 @@ public class MemberSubscriptionService {
   public MemberSubscription subscribeMember(final SubscribeMemberCommand command) {
     commandValidator.validate(command);
 
-    final Member member = memberRepository.findById(command.memberId())
+    final Member member = tenantScopedFinder.findById(memberRepository, command.memberId())
         .orElseThrow(() -> new MemberNotFoundException(command.memberId()));
 
     if (memberService.getCurrentStatus(member) == Status.DELETED) {
       throw new MemberDeletedException(command.memberId());
     }
 
-    final MembershipType type = membershipTypeRepository.findById(command.membershipTypeId())
+    final MembershipType type = tenantScopedFinder.findById(membershipTypeRepository, command.membershipTypeId())
         .orElseThrow(() -> new ResourceNotFoundException("MembershipType", command.membershipTypeId()));
 
     if (type.getStatus() != MembershipTypeStatus.ACTIVE) {
@@ -97,7 +99,7 @@ public class MemberSubscriptionService {
    *                                   if the subscription does not exist
    */
   public MemberSubscription endSubscription(final Long id) {
-    final MemberSubscription subscription = subscriptionRepository.findById(id)
+    final MemberSubscription subscription = tenantScopedFinder.findById(subscriptionRepository, id)
         .orElseThrow(() -> new ResourceNotFoundException("MemberSubscription", id));
 
     final LocalDate today = LocalDate.now();
@@ -120,6 +122,9 @@ public class MemberSubscriptionService {
    */
   @Transactional(readOnly = true)
   public List<MemberSubscription> findByMember(final Long memberId, final Boolean activeOnly) {
+    tenantScopedFinder.findById(memberRepository, memberId)
+        .orElseThrow(() -> new MemberNotFoundException(memberId));
+
     if (Boolean.TRUE.equals(activeOnly)) {
       return subscriptionRepository.findByMemberIdAndEndDateGreaterThanEqual(memberId, LocalDate.now());
     }
@@ -162,17 +167,14 @@ public class MemberSubscriptionService {
 
   private BigDecimal resolveAgreedPrice(final BigDecimal explicitPrice, final MembershipType type,
       final LocalDate startDate, final LocalDate endDate) {
-    // Manual override always wins
     if (nonNull(explicitPrice)) {
       return explicitPrice;
     }
 
-    // Automatic proration
     if (Boolean.TRUE.equals(type.getProratedMode())) {
       return computeProratedPrice(type, startDate, endDate);
     }
 
-    // Default: use the membership type's current price
     return type.getPrice();
   }
 
@@ -189,4 +191,5 @@ public class MemberSubscriptionService {
     return type.getPrice().multiply(BigDecimal.valueOf(remainingDays)).divide(BigDecimal.valueOf(totalPeriodDays), 2,
         RoundingMode.HALF_UP);
   }
+
 }

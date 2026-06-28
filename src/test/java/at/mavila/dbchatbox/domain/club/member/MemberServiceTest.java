@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,8 @@ import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.MemberDeletedException;
 import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 
 @ExtendWith(MockitoExtension.class)
 class MemberServiceTest {
@@ -37,6 +40,9 @@ class MemberServiceTest {
   @Mock
   private CommandValidator commandValidator;
 
+  @Mock
+  private TenantScopedFinder tenantScopedFinder;
+
   @InjectMocks
   private MemberService memberService;
 
@@ -44,8 +50,14 @@ class MemberServiceTest {
 
   @BeforeEach
   void setUp() {
+    TenantContext.setTenantId(1L);
     sampleMember = Member.builder().id(1L).firstName("John").lastName("Doe").email("john@example.com")
         .memberSince(LocalDate.of(2024, 1, 1)).build();
+  }
+
+  @AfterEach
+  void clearTenant() {
+    TenantContext.clear();
   }
 
   @Nested
@@ -53,7 +65,7 @@ class MemberServiceTest {
 
     @Test
     void shouldCreateMemberAndSetActiveStatus() {
-      when(memberRepository.existsByEmail("john@example.com")).thenReturn(false);
+      when(memberRepository.existsByEmailAndTenantId("john@example.com", 1L)).thenReturn(false);
       when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
       when(statusHistoryRepository.save(any(MemberStatusHistory.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -68,7 +80,7 @@ class MemberServiceTest {
 
     @Test
     void shouldRejectDuplicateEmail() {
-      when(memberRepository.existsByEmail("john@example.com")).thenReturn(true);
+      when(memberRepository.existsByEmailAndTenantId("john@example.com", 1L)).thenReturn(true);
 
       assertThatThrownBy(() -> memberService.createMember(
           new CreateMemberCommand("John", "Doe", "john@example.com", null, LocalDate.of(2024, 1, 1), null)))
@@ -81,7 +93,7 @@ class MemberServiceTest {
 
     @Test
     void shouldUpdateOnlyProvidedFields() {
-      when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+      when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
       when(statusHistoryRepository.findFirstByMemberIdOrderByChangedAtDesc(1L)).thenReturn(
           Optional.of(MemberStatusHistory.builder().status(Status.ACTIVE).changedAt(LocalDateTime.now()).build()));
       when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
@@ -95,7 +107,7 @@ class MemberServiceTest {
 
     @Test
     void shouldRejectUpdateOfDeletedMember() {
-      when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+      when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
       when(statusHistoryRepository.findFirstByMemberIdOrderByChangedAtDesc(1L)).thenReturn(
           Optional.of(MemberStatusHistory.builder().status(Status.DELETED).changedAt(LocalDateTime.now()).build()));
 
@@ -106,10 +118,10 @@ class MemberServiceTest {
 
     @Test
     void shouldRejectDuplicateEmailOnUpdate() {
-      when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+      when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
       when(statusHistoryRepository.findFirstByMemberIdOrderByChangedAtDesc(1L)).thenReturn(
           Optional.of(MemberStatusHistory.builder().status(Status.ACTIVE).changedAt(LocalDateTime.now()).build()));
-      when(memberRepository.existsByEmailAndIdNot("other@example.com", 1L)).thenReturn(true);
+      when(memberRepository.existsByEmailAndIdNotAndTenantId("other@example.com", 1L, 1L)).thenReturn(true);
 
       assertThatThrownBy(() -> memberService.updateMember(1L,
           new UpdateMemberCommand(null, null, "other@example.com", null, null, null)))
@@ -122,7 +134,7 @@ class MemberServiceTest {
 
     @Test
     void shouldCreateStatusEntry() {
-      when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+      when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
       when(statusHistoryRepository.findFirstByMemberIdOrderByChangedAtDesc(1L)).thenReturn(
           Optional.of(MemberStatusHistory.builder().status(Status.ACTIVE).changedAt(LocalDateTime.now()).build()));
       when(statusHistoryRepository.save(any(MemberStatusHistory.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -139,8 +151,6 @@ class MemberServiceTest {
 
     @Test
     void shouldThrowWhenNotFound() {
-      when(memberRepository.findById(999L)).thenReturn(Optional.empty());
-
       assertThatThrownBy(() -> memberService.findById(999L)).isInstanceOf(MemberNotFoundException.class);
     }
   }
@@ -150,7 +160,7 @@ class MemberServiceTest {
 
     @Test
     void shouldReturnAllMembersWhenNoFilter() {
-      when(memberRepository.findAll()).thenReturn(List.of(sampleMember));
+      when(memberRepository.findAllByTenantId(1L)).thenReturn(List.of(sampleMember));
 
       final List<Member> result = memberService.findAll(null);
 
@@ -159,7 +169,7 @@ class MemberServiceTest {
 
     @Test
     void shouldFilterByStatus() {
-      when(memberRepository.findAll()).thenReturn(List.of(sampleMember));
+      when(memberRepository.findAllByTenantId(1L)).thenReturn(List.of(sampleMember));
       when(statusHistoryRepository.findFirstByMemberIdOrderByChangedAtDesc(1L)).thenReturn(
           Optional.of(MemberStatusHistory.builder().status(Status.ACTIVE).changedAt(LocalDateTime.now()).build()));
 

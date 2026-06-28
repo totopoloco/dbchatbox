@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionRepository;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 
 @ExtendWith(MockitoExtension.class)
 class MemberGdprServiceTest {
@@ -37,6 +40,8 @@ class MemberGdprServiceTest {
   private MemberSubscriptionRepository subscriptionRepository;
   @Mock
   private MemberService memberService;
+  @Mock
+  private TenantScopedFinder tenantScopedFinder;
 
   @InjectMocks
   private MemberGdprService gdprService;
@@ -45,13 +50,19 @@ class MemberGdprServiceTest {
 
   @BeforeEach
   void setUp() {
+    TenantContext.setTenantId(1L);
     sampleMember = Member.builder().id(1L).firstName("John").lastName("Doe").email("john@example.com")
         .phoneNumber("+123456789").memberSince(LocalDate.of(2024, 1, 1)).build();
   }
 
+  @AfterEach
+  void clearTenant() {
+    TenantContext.clear();
+  }
+
   @Test
   void shouldAnonymizeMemberPersonalData() {
-    when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+    when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
     when(memberService.getCurrentStatus(sampleMember)).thenReturn(Status.ACTIVE);
     when(statusHistoryRepository.findByMemberIdOrderByChangedAtDesc(1L)).thenReturn(List.of());
     when(subscriptionRepository.findByMemberIdAndEndDateGreaterThanEqual(anyLong(), any(LocalDate.class)))
@@ -73,7 +84,7 @@ class MemberGdprServiceTest {
 
   @Test
   void shouldBeIdempotentForAlreadyDeletedMember() {
-    when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+    when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
     when(memberService.getCurrentStatus(sampleMember)).thenReturn(Status.DELETED);
 
     final var result = gdprService.deleteMember(1L);
@@ -88,7 +99,7 @@ class MemberGdprServiceTest {
         .startDate(LocalDate.of(2024, 1, 1)).endDate(LocalDate.of(2025, 12, 31)).agreedPrice(BigDecimal.valueOf(100))
         .build();
 
-    when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+    when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
     when(memberService.getCurrentStatus(sampleMember)).thenReturn(Status.ACTIVE);
     when(statusHistoryRepository.findByMemberIdOrderByChangedAtDesc(1L)).thenReturn(List.of());
     when(subscriptionRepository.findByMemberIdAndEndDateGreaterThanEqual(anyLong(), any(LocalDate.class)))
@@ -110,8 +121,6 @@ class MemberGdprServiceTest {
 
   @Test
   void shouldThrowWhenMemberNotFound() {
-    when(memberRepository.findById(999L)).thenReturn(Optional.empty());
-
     assertThatThrownBy(() -> gdprService.deleteMember(999L)).isInstanceOf(MemberNotFoundException.class);
   }
 }

@@ -1,0 +1,91 @@
+{
+  "id": "wat-simmering",
+  "realm": "wat-simmering",
+  "displayName": "WAT Simmering",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "ADMIN",      "composite": false, "clientRole": false },
+      { "name": "MEMBER",     "composite": false, "clientRole": false },
+      { "name": "TRAINER",    "composite": false, "clientRole": false },
+      { "name": "API_CLIENT", "composite": false, "clientRole": false }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "club-spa",
+      "name": "Club SPA",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"]
+    },
+    {
+      "clientId": "club-m2m",
+      "name": "Club M2M",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "secret": "ChangeMe-WAT-M2M",
+      "defaultClientScopes": ["roles"],
+      "optionalClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "username": "admin.wat",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "WAT",
+      "email": "admin@wat-simmering.local",
+      "credentials": [
+        { "type": "password", "value": "Admin#WAT2026", "temporary": false }
+      ],
+      "realmRoles": ["ADMIN"]
+    },
+    {
+      "username": "member.anna",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Anna",
+      "lastName": "WAT",
+      "email": "anna@wat-simmering.local",
+      "credentials": [
+        { "type": "password", "value": "Member#WAT2026", "temporary": false }
+      ],
+      "realmRoles": ["MEMBER"]
+    },
+    {
+      "username": "trainer.wat",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Trainer",
+      "lastName": "WAT",
+      "email": "trainer@wat-simmering.local",
+      "credentials": [
+        { "type": "password", "value": "Trainer#WAT2026", "temporary": false }
+      ],
+      "realmRoles": ["TRAINER"]
+    }
+  ],
+  "defaultRoles": [],
+  "requiredCredentials": ["password"]
+}

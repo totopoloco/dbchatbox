@@ -31,6 +31,15 @@ public interface SessionOccurrenceRepository extends JpaRepository<SessionOccurr
   boolean existsBySessionIdAndDate(Long sessionId, LocalDate date);
 
   /**
+   * Finds all session occurrences belonging to a specific tenant.
+   *
+   * @param tenantId
+   *                the tenant ID
+   * @return all occurrences for that tenant
+   */
+  List<SessionOccurrence> findAllByTenantId(Long tenantId);
+
+  /**
    * Finds occurrences for a session within a date range.
    *
    * @param sessionId

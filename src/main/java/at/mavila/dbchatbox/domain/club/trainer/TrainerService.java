@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -26,6 +28,7 @@ public class TrainerService {
   private final TrainerRepository trainerRepository;
   private final TrainerSettingsRepository trainerSettingsRepository;
   private final CommandValidator commandValidator;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Registers a new trainer and creates the initial {@link TrainerSettings} in a
@@ -38,7 +41,7 @@ public class TrainerService {
   public Trainer createTrainer(final CreateTrainerCommand command) {
     commandValidator.validate(command);
 
-    if (trainerRepository.existsByEmail(command.email())) {
+    if (trainerRepository.existsByEmailAndTenantId(command.email(), currentTenantOrThrow())) {
       throw new DuplicateEmailException(command.email());
     }
 
@@ -64,7 +67,7 @@ public class TrainerService {
    * @return the updated trainer
    */
   public Trainer updateTrainer(final Long id, final UpdateTrainerCommand command) {
-    final Trainer trainer = trainerRepository.findById(id)
+    final Trainer trainer = tenantScopedFinder.findById(trainerRepository, id)
         .orElseThrow(() -> new ResourceNotFoundException("Trainer", id));
 
     if (nonNull(command.firstName())) {
@@ -74,7 +77,8 @@ public class TrainerService {
       trainer.setLastName(command.lastName());
     }
     if (nonNull(command.email()) && !command.email().equals(trainer.getEmail())) {
-      if (trainerRepository.existsByEmailAndIdNot(command.email(), id)) {
+      final Long tenantId = currentTenantOrThrow();
+      if (trainerRepository.existsByEmailAndIdNotAndTenantId(command.email(), id, tenantId)) {
         throw new DuplicateEmailException(command.email());
       }
       trainer.setEmail(command.email());
@@ -96,6 +100,9 @@ public class TrainerService {
    * @return the updated settings
    */
   public TrainerSettings updateTrainerSettings(final Long trainerId, final UpdateTrainerSettingsCommand command) {
+    tenantScopedFinder.findById(trainerRepository, trainerId)
+        .orElseThrow(() -> new ResourceNotFoundException("Trainer", trainerId));
+
     final TrainerSettings settings = trainerSettingsRepository.findByTrainerId(trainerId)
         .orElseThrow(() -> new ResourceNotFoundException("TrainerSettings", trainerId));
 
@@ -121,18 +128,21 @@ public class TrainerService {
    */
   @Transactional(readOnly = true)
   public TrainerSettings findSettingsByTrainerId(final Long trainerId) {
+    tenantScopedFinder.findById(trainerRepository, trainerId)
+        .orElseThrow(() -> new ResourceNotFoundException("Trainer", trainerId));
+
     return trainerSettingsRepository.findByTrainerId(trainerId)
         .orElseThrow(() -> new ResourceNotFoundException("TrainerSettings", trainerId));
   }
 
   /**
-   * Returns all trainers.
+   * Returns all trainers within the current tenant.
    *
    * @return list of all trainers
    */
   @Transactional(readOnly = true)
   public List<Trainer> findAll() {
-    return trainerRepository.findAll();
+    return trainerRepository.findAllByTenantId(currentTenantOrThrow());
   }
 
   /**
@@ -144,6 +154,15 @@ public class TrainerService {
    */
   @Transactional(readOnly = true)
   public Trainer findById(final Long id) {
-    return trainerRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Trainer", id));
+    return tenantScopedFinder.findById(trainerRepository, id)
+        .orElseThrow(() -> new ResourceNotFoundException("Trainer", id));
+  }
+
+  private Long currentTenantOrThrow() {
+    final Long t = TenantContext.getTenantId();
+    if (isNull(t)) {
+      throw new IllegalStateException("No tenant in context");
+    }
+    return t;
   }
 }

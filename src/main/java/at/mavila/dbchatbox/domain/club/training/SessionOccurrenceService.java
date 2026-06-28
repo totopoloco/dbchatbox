@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import at.mavila.dbchatbox.domain.club.exception.InvalidOperationException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
+import at.mavila.dbchatbox.infrastructure.security.TenantContext;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -31,6 +33,7 @@ public class SessionOccurrenceService {
   private final SessionOccurrenceRepository occurrenceRepository;
   private final SessionRepository sessionRepository;
   private final CommandValidator commandValidator;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Bulk-creates session occurrences for a date range, one per matching weekday.
@@ -48,7 +51,7 @@ public class SessionOccurrenceService {
   public List<SessionOccurrence> createOccurrences(final CreateOccurrencesCommand command) {
     commandValidator.validate(command);
 
-    final Session session = sessionRepository.findById(command.sessionId())
+    final Session session = tenantScopedFinder.findById(sessionRepository, command.sessionId())
         .orElseThrow(() -> new ResourceNotFoundException("Session", command.sessionId()));
 
     final DayOfWeek targetDay = session.getDayOfWeek();
@@ -124,7 +127,7 @@ public class SessionOccurrenceService {
     if (hasSession && hasDateRange) {
       return occurrenceRepository.findBySessionIdAndDateBetween(filter.sessionId(), filter.from(), filter.to());
     }
-    return occurrenceRepository.findAll();
+    return occurrenceRepository.findAllByTenantId(currentTenantOrThrow());
   }
 
   /**
@@ -165,7 +168,8 @@ public class SessionOccurrenceService {
   }
 
   private SessionOccurrence findByIdOrThrow(final Long id) {
-    return occurrenceRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("SessionOccurrence", id));
+    return tenantScopedFinder.findById(occurrenceRepository, id)
+        .orElseThrow(() -> new ResourceNotFoundException("SessionOccurrence", id));
   }
 
   private void validateScheduled(final SessionOccurrence occurrence, final String action) {
@@ -179,5 +183,13 @@ public class SessionOccurrenceService {
       final Long sessionId) {
     return date.getDayOfWeek() == targetDay && !skip.contains(date)
         && !occurrenceRepository.existsBySessionIdAndDate(sessionId, date);
+  }
+
+  private Long currentTenantOrThrow() {
+    final Long t = TenantContext.getTenantId();
+    if (isNull(t)) {
+      throw new IllegalStateException("No tenant in context");
+    }
+    return t;
   }
 }

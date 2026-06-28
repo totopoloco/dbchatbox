@@ -8,9 +8,9 @@ import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
+import at.mavila.dbchatbox.TenantAwareIntegrationTest;
 import at.mavila.dbchatbox.domain.club.member.CreateMemberCommand;
 import at.mavila.dbchatbox.domain.club.member.Member;
 import at.mavila.dbchatbox.domain.club.member.MemberRepository;
@@ -21,9 +21,8 @@ import at.mavila.dbchatbox.domain.club.member.MemberService;
  * {@code createdAt} and {@code updatedAt}
  * automatically and that {@code createdAt} is immutable after an update.
  */
-@SpringBootTest
 @Transactional
-class AuditableTest {
+class AuditableTest extends TenantAwareIntegrationTest {
 
   @Autowired
   private MemberService memberService;

@@ -1,0 +1,91 @@
+{
+  "id": "asv-pressbaum-badminton",
+  "realm": "asv-pressbaum-badminton",
+  "displayName": "ASV Pressbaum Badminton",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "ADMIN",      "composite": false, "clientRole": false },
+      { "name": "MEMBER",     "composite": false, "clientRole": false },
+      { "name": "TRAINER",    "composite": false, "clientRole": false },
+      { "name": "API_CLIENT", "composite": false, "clientRole": false }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "club-spa",
+      "name": "Club SPA",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"]
+    },
+    {
+      "clientId": "club-m2m",
+      "name": "Club M2M",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "secret": "ChangeMe-ASV-M2M",
+      "defaultClientScopes": ["roles"],
+      "optionalClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "username": "admin.asv",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "ASV",
+      "email": "admin@asv-pressbaum-badminton.local",
+      "credentials": [
+        { "type": "password", "value": "Admin#ASV2026", "temporary": false }
+      ],
+      "realmRoles": ["ADMIN"]
+    },
+    {
+      "username": "member.asv",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Member",
+      "lastName": "ASV",
+      "email": "member@asv-pressbaum-badminton.local",
+      "credentials": [
+        { "type": "password", "value": "Member#ASV2026", "temporary": false }
+      ],
+      "realmRoles": ["MEMBER"]
+    },
+    {
+      "username": "trainer.asv",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Trainer",
+      "lastName": "ASV",
+      "email": "trainer@asv-pressbaum-badminton.local",
+      "credentials": [
+        { "type": "password", "value": "Trainer#ASV2026", "temporary": false }
+      ],
+      "realmRoles": ["TRAINER"]
+    }
+  ],
+  "defaultRoles": [],
+  "requiredCredentials": ["password"]
+}

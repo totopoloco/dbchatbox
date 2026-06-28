@@ -1,0 +1,91 @@
+{
+  "id": "union-rot-weiss",
+  "realm": "union-rot-weiss",
+  "displayName": "Union Rot-Weiss",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "ADMIN",      "composite": false, "clientRole": false },
+      { "name": "MEMBER",     "composite": false, "clientRole": false },
+      { "name": "TRAINER",    "composite": false, "clientRole": false },
+      { "name": "API_CLIENT", "composite": false, "clientRole": false }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "club-spa",
+      "name": "Club SPA",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"]
+    },
+    {
+      "clientId": "club-m2m",
+      "name": "Club M2M",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "secret": "ChangeMe-URW-M2M",
+      "defaultClientScopes": ["roles"],
+      "optionalClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "username": "admin.urw",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "URW",
+      "email": "admin@union-rot-weiss.local",
+      "credentials": [
+        { "type": "password", "value": "Admin#URW2026", "temporary": false }
+      ],
+      "realmRoles": ["ADMIN"]
+    },
+    {
+      "username": "member.urw",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Member",
+      "lastName": "URW",
+      "email": "member@union-rot-weiss.local",
+      "credentials": [
+        { "type": "password", "value": "Member#URW2026", "temporary": false }
+      ],
+      "realmRoles": ["MEMBER"]
+    },
+    {
+      "username": "trainer.urw",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Trainer",
+      "lastName": "URW",
+      "email": "trainer@union-rot-weiss.local",
+      "credentials": [
+        { "type": "password", "value": "Trainer#URW2026", "temporary": false }
+      ],
+      "realmRoles": ["TRAINER"]
+    }
+  ],
+  "defaultRoles": [],
+  "requiredCredentials": ["password"]
+}

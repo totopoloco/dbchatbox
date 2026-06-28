@@ -1,26 +1,277 @@
 # Club Management System
 
-A GraphQL-based club management application built with Spring Boot 4 and Java 25.
+A multi-tenant, GraphQL-only club management backend built with Spring Boot 4 and Java 25.
+Every operation is scoped to a **tenant** (a sports club) and protected by JWT or API-key
+authentication.
+
+---
 
 ## Tech Stack
 
 - **Java 25** / **Spring Boot 4.0.5**
 - **Spring for GraphQL** (no REST endpoints)
-- **JPA / Hibernate 7** with **Flyway** migrations
-- **H2** (dev/test) / **PostgreSQL 16** (production)
-- **TSID** for entity ID generation
+- **Spring Security 7** — stateless JWT resource server + custom API-key filter
+- **Keycloak 26.4** — one realm per tenant; ROPC grant for the data loader / SPA dev
+- **JPA / Hibernate 7** with **Flyway** migrations (V1–V7)
+- **H2** (dev/test, PostgreSQL-compat mode) / **PostgreSQL 16** (production)
+- **TSID** for collision-free distributed ID generation
 - **Lombok**, **Jakarta Bean Validation**
 - **Spring AI 2.0** with **Anthropic Claude** for the natural-language chatbox
 
-## Getting Started
+---
 
-### Prerequisites
+## Quick Start (devcontainer — recommended)
 
-- JDK 25+
-- PostgreSQL 16+ (production only; dev/test use embedded H2)
-- Anthropic API key (only required to use the chatbox feature — see [Chatbox](#chatbox-natural-language-assistant))
+The repository ships a fully configured devcontainer. One `docker compose up` starts:
 
-### Build & Run
+| Service      | Port  | Purpose                                        |
+|--------------|-------|------------------------------------------------|
+| `dbchatbox-dev` | 8080 | Spring Boot app container (runs `sleep infinity`) |
+| `keycloak`   | 8088  | Keycloak 26.4 with three realms pre-imported   |
+| `postgres`   | 5432  | PostgreSQL 16 (optional; dev uses H2)          |
+
+### 1 — Start the services
+
+Open the project in VS Code with the Dev Containers extension and rebuild, or run:
+
+```bash
+docker compose -f .devcontainer/docker-compose.yml up -d
+```
+
+Keycloak takes ~30 s to become healthy. The three realms
+(`wat-simmering`, `union-rot-weiss`, `asv-pressbaum-badminton`) are imported automatically
+from `.devcontainer/keycloak/import/`.
+
+### 2 — Start the application
+
+Inside the devcontainer terminal:
+
+```bash
+# Optional — chatbox feature needs this; the rest of the API works without it
+export ANTHROPIC_API_KEY=sk-ant-...
+
+./gradlew bootRun
+```
+
+The dev profile is active automatically (`SPRING_PROFILES_ACTIVE=dev` is set in
+`docker-compose.yml`). H2 resets on every restart; Flyway recreates the schema and seeds the
+three tenant rows.
+
+Endpoints:
+
+| URL | Purpose |
+|-----|---------|
+| `http://localhost:8080/graphql` | GraphQL API (POST) |
+| `http://localhost:8080/graphiql` | GraphiQL playground (GET) |
+| `http://localhost:8080/h2-console` | H2 console (JDBC URL: `jdbc:h2:mem:dbchatbox`) |
+| `http://localhost:8088` | Keycloak admin console (admin / admin) |
+
+### 3 — Load demo data
+
+After the app has started, run the data loader. It authenticates against each tenant's Keycloak
+realm, creates trainers, members, subscriptions, and one API key per tenant, then writes the
+generated credentials to `scripts/keycloak-credentials.txt` (git-ignored):
+
+```bash
+./scripts/data_loader.sh
+```
+
+To also run verification queries after loading:
+
+```bash
+./scripts/data_loader.sh --verify
+```
+
+The credentials file will contain ready-to-use bearer tokens and API keys for all three tenants.
+
+---
+
+## Security Architecture
+
+### Multi-tenancy
+
+Every request is associated with exactly one tenant. The three demo tenants are seeded by the
+V7 Flyway migration:
+
+| ID | Slug | Display name | Keycloak realm |
+|----|------|-------------|----------------|
+| 1 | `wat-simmering` | WAT Simmering | `wat-simmering` |
+| 2 | `union-rot-weiss` | Union Rot-Weiss | `union-rot-weiss` |
+| 3 | `asv-pressbaum-badminton` | ASV Pressbaum Badminton | `asv-pressbaum-badminton` |
+
+All 11 domain entity tables carry a `tenant_id` column (NOT NULL, FK → `tenant`). The
+`Auditable` `@PrePersist` callback reads `TenantContext` (a `ThreadLocal<Long>`) and stamps
+the column automatically — application code never sets `tenant_id` directly.
+`TenantScopedFinder` ensures every by-ID lookup filters on the current tenant's ID, so a
+guessed ID from another tenant returns "not found".
+
+### Human authentication (JWT via Keycloak)
+
+Each tenant's Keycloak realm has a public client `club-spa` with direct-access grants enabled.
+A typical login flow:
+
+```graphql
+# 1. Authenticate — no Authorization header required
+mutation {
+  login(input: {
+    tenantSlug: "wat-simmering"
+    username:   "admin.wat"
+    password:   "Admin#WAT2026"
+  }) {
+    accessToken
+    refreshToken
+    expiresIn
+  }
+}
+```
+
+Use the returned `accessToken` as a Bearer header on every subsequent request:
+
+```
+Authorization: Bearer <accessToken>
+```
+
+The app validates the token against that realm's JWKS endpoint
+(`http://localhost:8088/realms/<realm>`) via `TenantAuthenticationManagerResolver`.
+Issuers not found in the `tenant` table are rejected. `TenantResolutionFilter` then reads
+the `iss` claim, looks up the tenant, and sets `TenantContext` for the request lifetime.
+
+Refresh before expiry (access tokens live 5 minutes in dev):
+
+```graphql
+mutation {
+  refreshToken(input: {
+    tenantSlug:   "wat-simmering"
+    refreshToken: "<refreshToken>"
+  }) {
+    accessToken
+    expiresIn
+  }
+}
+```
+
+Each realm carries four roles propagated as Spring authorities (`ROLE_ADMIN`, `ROLE_MEMBER`,
+`ROLE_TRAINER`, `ROLE_API_CLIENT`). The current policy gates all operations on
+`isAuthenticated()` — per-role enforcement is a later iteration.
+
+### Machine-to-machine authentication (API keys)
+
+API keys are meant for server-to-server integrations (CI pipelines, external dashboards).
+They do not involve Keycloak at runtime — authentication is local.
+
+**Key format:** `cmk.<tenantSlug>.<32-char-base64url>`  
+Example: `cmk.wat-simmering.x7Kp2MnQrLvBsJdTeXfYaG`
+
+Only the HMAC-SHA256 hash of the raw key is stored. A stolen database yields no usable keys
+because the HMAC pepper (`API_KEY_HMAC_SECRET`) is never stored in the database.
+
+**Generate a key** (requires an authenticated admin session):
+
+```graphql
+mutation {
+  generateApiKey(input: { label: "ci-pipeline" }) {
+    rawKey        # ← save this now; it is never shown again
+    apiKey {
+      id
+      label
+      scope
+      createdAt
+    }
+  }
+}
+```
+
+**Authenticate with a key** — send it in the `x-api-key` header (no `Bearer` prefix):
+
+```
+x-api-key: cmk.wat-simmering.x7Kp2MnQrLvBsJdTeXfYaG
+```
+
+The filter parses the tenant slug from the key prefix, verifies the HMAC, checks that the key
+is active and belongs to that tenant, then sets `TenantContext` and grants authorities
+`ROLE_M2M` and `SCOPE_READ`. API keys are read-only in this phase.
+
+**Revoke a key:**
+
+```graphql
+mutation {
+  revokeApiKey(id: "7890123456789012") {
+    id
+    active   # false after revocation
+  }
+}
+```
+
+**List all keys for the current tenant:**
+
+```graphql
+query {
+  apiKeys {
+    id
+    label
+    scope
+    active
+    lastUsedAt
+    createdAt
+  }
+}
+```
+
+### Identity queries
+
+After logging in, call `me` to retrieve (or JIT-provision) the current user's identity record.
+This is also required for the data loader to link a Keycloak user to a domain member or trainer:
+
+```graphql
+query {
+  me {
+    id
+    keycloakSubject   # Keycloak sub claim — needed for linkAppUser
+    username
+    email
+    memberId
+    trainerId
+  }
+}
+```
+
+```graphql
+# Admin operation: link a Keycloak identity to a domain entity
+mutation {
+  linkAppUser(input: {
+    keycloakSubject: "3f2a1e9c-..."   # from the user's me.keycloakSubject
+    memberId: "123456789012345"       # pass memberId OR trainerId, not both
+  }) {
+    id
+    memberId
+  }
+}
+```
+
+```graphql
+query {
+  currentTenant {
+    id
+    slug
+    name
+  }
+}
+```
+
+### Environment variables
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `API_KEY_HMAC_SECRET` | **prod only** | `dev-only-hmac-pepper-…` (dev profile) | HMAC pepper for API key hashing. App refuses to start without it in prod. |
+| `ANTHROPIC_API_KEY` | No | *(none)* | Enables the chatbox feature. The rest of the API works without it. |
+
+Production must source `API_KEY_HMAC_SECRET` from a secrets manager. The dev-profile default
+in `application-dev.properties` is committed intentionally for zero-config local development
+and is worthless outside H2 dev data.
+
+---
+
+## Build & Run (without devcontainer)
 
 ```bash
 # Build (skip tests)
@@ -29,335 +280,154 @@ A GraphQL-based club management application built with Spring Boot 4 and Java 25
 # Build with tests
 ./gradlew build
 
-# Run (dev profile, H2 in-memory). The chatbox expects ANTHROPIC_API_KEY in
-# the environment; without it the ask query returns a provider-unavailable
-# error but the rest of the API still works.
-export ANTHROPIC_API_KEY=sk-ant-...
+# Run (dev profile, H2)
 ./gradlew bootRun
 ```
 
-The GraphQL endpoint is available at `http://localhost:8080/graphql`.
-The GraphiQL UI is at `http://localhost:8080/graphiql` (dev profile only).
-The H2 console is at `http://localhost:8080/h2-console` (dev profile only, JDBC URL: `jdbc:h2:mem:dbchatbox`).
+Requires JDK 25. Keycloak must be started separately, or the JWT resource-server stays idle
+(requests without tokens still reach the `login` mutation; JWKS fetching is lazy).
 
 ### Profiles
 
-| Profile         | Database                      | Notes                                                                       |
-| --------------- | ----------------------------- | --------------------------------------------------------------------------- |
-| `dev` (default) | H2 in-memory (PG compat mode) | H2 console enabled, GraphiQL enabled                                        |
-| `test`          | H2 in-memory                  | Used by automated tests                                                     |
-| `prod`          | PostgreSQL                    | Requires `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` env vars |
+| Profile | Database | Notes |
+|---------|----------|-------|
+| `dev` | H2 in-memory (PG compat) | H2 console, GraphiQL, PoC HMAC secret |
+| `test` | H2 in-memory | Used by `./gradlew test` |
+| `prod` | PostgreSQL 16 | Requires `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `API_KEY_HMAC_SECRET` |
+
+---
 
 ## Domain Model
 
-The system manages a sports/social club with the following core entities:
+The system manages a sports/social club with these core entities. All 11 mutable entity types
+extend `Auditable`, which auto-stamps `created_at`, `updated_at`, and `tenant_id` via JPA
+lifecycle callbacks.
 
+- **Tenant** — a sports club; root of the tenant dimension; one Keycloak realm per tenant
+- **AppUser** — thin link between a Keycloak `sub` and a domain Member or Trainer; JIT-provisioned on first `me` call; no passwords stored
+- **ApiKey** — M2M credentials; only the HMAC hash is persisted
 - **Member** — club members with status lifecycle (ACTIVE → INACTIVE → DELETED)
+- **MemberStatusHistory** — immutable audit trail of every status change
 - **Trainer** — trainers who lead sessions (contact details only)
-- **TrainerSettings** — per-trainer compensation and workflow settings (hourly rate, payment mode, auto-approve)
-- **MembershipType** — subscription templates (e.g. "Gold Monthly") with pricing, linked sessions, and configurable grace period
-- **MemberSubscription** — a member's active subscription to a membership type, with payment verification status
-- **Payment** — payments against subscriptions
-- **PaymentDocument** — payment proof documents (bank-issued PDFs) uploaded by members for admin verification
+- **TrainerSettings** — per-trainer compensation settings (hourly rate, payment mode, auto-approve)
+- **MembershipType** — subscription templates with pricing, linked sessions, and configurable grace period
+- **MemberSubscription** — a member's active subscription, with payment verification status
+- **Payment** — payments recorded against subscriptions
+- **PaymentDocument** — bank-issued PDFs uploaded by members for admin review
 - **Session** — recurring weekly training slots
-- **SessionOccurrence** — concrete instances of sessions on specific dates
-- **TrainerLog** — trainer hour tracking with approval workflow
-- **NotificationService** — domain interface for admin alerts and member reminders (logging-only mock in Phase 1)
+- **SessionOccurrence** — concrete session instances on specific dates
+- **TrainerLog** — trainer hour tracking with approve/reject workflow
+
+---
 
 ## GraphQL API
 
-### Example Queries
+### Authentication operations
+
+See [Security Architecture](#security-architecture) for full examples.
+
+| Operation | Type | Auth required |
+|-----------|------|---------------|
+| `login` | Mutation | None |
+| `refreshToken` | Mutation | None |
+| `me` | Query | JWT |
+| `currentTenant` | Query | JWT or API key |
+| `generateApiKey` | Mutation | JWT (admin) |
+| `revokeApiKey` | Mutation | JWT (admin) |
+| `linkAppUser` | Mutation | JWT (admin) |
+| `apiKeys` | Query | JWT or API key |
+
+All other operations require `isAuthenticated()` (JWT or API key).
+
+### Domain operations (examples)
 
 ```graphql
 # List active members
 query {
   members(status: "ACTIVE") {
-    id
-    firstName
-    lastName
-    email
-    currentStatus
+    id firstName lastName email currentStatus createdAt
   }
 }
 
-# Get member with subscriptions
-query {
-  memberById(id: "123") {
-    firstName
-    lastName
-    subscriptions {
-      membershipType {
-        name
-      }
-      startDate
-      active
-    }
-  }
-}
-```
-
-### Example Mutations
-
-```graphql
 # Create a member
 mutation {
-  createMember(
-    input: {
-      firstName: "Jane"
-      lastName: "Smith"
-      email: "jane@example.com"
-      memberSince: "2024-01-15"
-    }
-  ) {
-    id
-    firstName
-    lastName
-    currentStatus
+  createMember(input: {
+    firstName: "Jane"
+    lastName:  "Smith"
+    email:     "jane@example.com"
+    memberSince: "2024-01-15"
+  }) {
+    id firstName lastName currentStatus
   }
 }
 
-# Change member status
+# Register a trainer
 mutation {
-  changeMemberStatus(
-    input: { memberId: "123", status: INACTIVE, reason: "Moved abroad" }
-  ) {
-    status
-    changedAt
-    reason
+  createTrainer(input: {
+    firstName: "Bob"
+    lastName:  "Trainer"
+    email:     "bob@club.at"
+    hourlyRate: 35.00
+    paymentMode: "PER_SESSION"
+  }) {
+    id firstName settings { hourlyRate paymentMode }
   }
 }
 
-# Register a trainer (also creates initial TrainerSettings)
-mutation {
-  createTrainer(
-    input: {
-      firstName: "Bob"
-      lastName: "Trainer"
-      email: "bob@club.at"
-      hourlyRate: 35.00
-      paymentMode: "PER_SESSION"
-    }
-  ) {
-    id
-    firstName
-    settings {
-      hourlyRate
-      paymentMode
-      autoApproveHours
-    }
-  }
-}
-
-# Update trainer compensation settings (admin-only)
-mutation {
-  updateTrainerSettings(
-    trainerId: "456"
-    input: { hourlyRate: 40.00, paymentMode: "MONTHLY" }
-  ) {
-    hourlyRate
-    paymentMode
-    autoApproveHours
-  }
-}
-```
-
-## GDPR Support
-
-- **Soft-delete**: `deleteMember` sets status to DELETED and anonymises PII
-- **Automatic purge**: A scheduled job runs daily to anonymise members deleted beyond the retention period (default: 30 days)
-- Subscription history is preserved with anonymised member references
-
-## Project Structure
-
-```
-src/main/java/at/mavila/dbchatbox/
-├── application/         # Scheduled jobs (GDPR purge)
-├── domain/
-│   ├── club/
-│   │   ├── exception/   # Domain exceptions
-│   │   ├── member/      # Member entity, service, GDPR service, repository
-│   │   ├── membership/  # MembershipType, status management, grace period
-│   │   ├── notification/ # NotificationService interface + logging-only mock
-│   │   ├── payment/     # Payment, PaymentDocument, upload/review workflow
-│   │   ├── subscription/ # MemberSubscription, payment status tracking
-│   │   ├── trainer/     # Trainer, TrainerSettings, TrainerLog
-│   │   └── training/    # Session, SessionOccurrence
-│   └── support/         # TSID generator, command validator
-└── infrastructure/
-    └── web/graphql/     # GraphQL controllers, scalar config, error handling
-```
-
-## Features
-
-### Payment Verification Workflow
-
-Members can upload bank-issued PDF documents as proof of payment for their subscriptions. The workflow:
-
-1. Subscription is created with `paymentStatus = NOT_PAID`
-2. Member uploads a payment document via `uploadPaymentDocument` → status transitions to `IN_REVIEW`
-3. Admin reviews via `reviewPaymentDocument` → status transitions to `REVIEWED` (approved) or back to `NOT_PAID` (rejected)
-
-```graphql
-# Upload a payment document
-mutation {
-  uploadPaymentDocument(
-    input: {
-      memberSubscriptionId: "123"
-      fileName: "bank-transfer-receipt.pdf"
-      fileContent: "JVBERi0x..." # Base64-encoded PDF
-      notes: "Transfer from account AT12 3456"
-    }
-  ) {
-    id
-    fileName
-    uploadedAt
-  }
-}
-
-# Review a payment document (admin)
-mutation {
-  reviewPaymentDocument(
-    input: { memberSubscriptionId: "123", approved: true }
-  ) {
-    id
-    paymentStatus
-  }
-}
-```
-
-### Grace Period & Overdue Detection
-
-Each membership type defines a `gracePeriodDays` (default: 30). A subscription is considered **overdue** when `today > startDate + gracePeriodDays` and `paymentStatus ≠ REVIEWED`.
-
-```graphql
-# Query overdue subscriptions (admin)
+# Query overdue subscriptions
 query {
   overdueSubscriptions {
-    member {
-      firstName
-      lastName
-    }
-    membershipType {
-      name
-    }
+    member { firstName lastName }
+    membershipType { name }
     paymentStatus
     dueDate
     daysOverdue
   }
 }
-
-# Query subscriptions pending payment review (admin)
-query {
-  pendingPaymentReviews {
-    id
-    member {
-      firstName
-      lastName
-    }
-    paymentStatus
-  }
-}
 ```
 
-### Notification System
+---
 
-The system defines a `NotificationService` interface with triggers for:
+## Features
 
-- **Overdue payment detection** — daily cron job alerts admin about expired grace periods
-- **Payment document upload** — immediate admin notification when a member uploads proof
-- **Payment reminders** — recurring reminders for members with unpaid subscriptions
-- **Membership type publication** — notify active members when a new membership type goes live
+### Payment Verification Workflow
 
-Phase 1 uses a logging-only mock implementation. Real email delivery can be added via `@Primary` or Spring profile without changing domain code.
+1. Subscription created → `paymentStatus = NOT_PAID`
+2. Member uploads proof → `uploadPaymentDocument` → status → `IN_REVIEW`
+3. Admin approves/rejects → `reviewPaymentDocument` → status → `REVIEWED` / `NOT_PAID`
+
+### Grace Period & Overdue Detection
+
+Each `MembershipType` defines `gracePeriodDays`. A subscription is overdue when
+`today > startDate + gracePeriodDays` and `paymentStatus ≠ REVIEWED`.
+
+### GDPR Support
+
+- `deleteMember` sets status to `DELETED` and anonymises PII immediately
+- A scheduled job runs daily at 02:00 to anonymise members deleted beyond the retention window
+  (default: 30 days, configurable via `app.gdpr.retention-days`)
+- Subscription history is preserved with anonymised member references
 
 ### Optimistic Locking
 
-All entities use JPA `@Version` (stored as `Short`) for optimistic locking, preventing lost updates in concurrent modification scenarios.
+All entities carry `@Version` (`Short`) for optimistic locking. Concurrent modifications
+receive a conflict error rather than silently overwriting each other.
 
 ### Audit Timestamps
 
-All 11 mutable domain entities (`Member`, `MemberStatusHistory`, `MemberSubscription`, `MembershipType`, `Payment`, `PaymentDocument`, `Session`, `SessionOccurrence`, `Trainer`, `TrainerSettings`, `TrainerLog`) automatically carry two audit timestamps via the abstract `Auditable` base class:
+`Auditable` auto-sets `created_at` (once at insert) and `updated_at` (on every write) via
+`@PrePersist` / `@PreUpdate`. No application code sets these fields.
 
-| Field       | DB column    | Behaviour                                            | GraphQL                                |
-| ----------- | ------------ | ---------------------------------------------------- | -------------------------------------- |
-| `createdAt` | `created_at` | Set once at insert via `@PrePersist`; never modified | Exposed as `DateTime!` on all 11 types |
-| `updatedAt` | `updated_at` | Refreshed on every update via `@PreUpdate`           | Internal only — not in schema          |
-
-No application code sets these fields; they are managed entirely by JPA lifecycle callbacks.
-
-```graphql
-# Query createdAt on members
-query {
-  members(status: "ACTIVE") {
-    id
-    firstName
-    lastName
-    createdAt
-  }
-}
-```
+---
 
 ## Chatbox — Natural-Language Assistant
 
-A single GraphQL query — `ask(input: AskInput!): AskResult!` — accepts a free-form
-question in any language and returns a synthesised answer built from the
-existing read-only domain operations. Internally the assistant uses
-[Spring AI 2.0](https://spring.io/projects/spring-ai) (milestone M3) to call
-Anthropic Claude. Spec: [`src/specs/chatbox/Chatbox.md`](src/specs/chatbox/Chatbox.md).
-
-### How it works (high level)
-
-1. The client sends `ask(input: { prompt: "show me all members who haven't paid yet" })`.
-2. `ChatAssistantController` validates and hands off to `ChatAssistantService`.
-3. `ChatAssistantService` checks a per-hour global rate limit, then sends the
-   prompt to the LLM via Spring AI's `ChatClient`. The client was configured
-   at startup with the system prompt and the full tool catalog (every
-   `@Tool`-annotated method in `domain.chatbox.tools`).
-4. Spring AI drives the tool-calling loop internally: if the model requests a
-   tool, Spring AI dispatches the call to the matching Java method on the real
-   Spring bean (so `@Transactional`, validation, etc. apply), feeds the
-   JSON-serialised result back to the LLM, and continues until the model
-   emits its final text.
-5. The service returns an `AskResult` with the answer, the model id, token
-   usage reported by the provider, and end-to-end latency.
-
-No new business logic is introduced: the domain remains the single source of
-truth. The LLM only orchestrates.
-
-### Spring AI version
-
-The project uses **Spring AI 2.0.0-M3** — the first Spring AI line built on
-Spring Framework 7 / Spring Boot 4. Earlier versions (1.0.x, 1.1.x) were
-compiled against Framework 6 and fail at runtime on Boot 4 with
-`NoSuchMethodError`. The milestone repo is declared in `build.gradle`; once
-2.0 reaches GA the repo entry can be removed.
-
-### Setup
-
-Set your Anthropic API key before running:
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-./gradlew bootRun
-```
-
-Copy `.env.example` to `.env` for a reusable local configuration. Switching
-providers (OpenAI, Ollama, Azure OpenAI, Bedrock, …) is a three-line change:
-
-1. Swap the Spring AI starter in `build.gradle`
-   (`spring-ai-starter-model-anthropic` → `spring-ai-starter-model-openai`, …).
-2. Change `spring.ai.model.chat` in `application.properties`.
-3. Set the matching `spring.ai.<provider>.*` properties (api key, model id, …).
-
-No Java code changes required — `ChatClient` is provider-agnostic.
-
-### Example: unpaid members
+`ask(input: AskInput!): AskResult!` accepts a free-form question and returns a synthesised
+answer built from read-only domain operations. Requires authentication (JWT or API key).
 
 ```graphql
 query {
-  ask(
-    input: { prompt: "Show me all members who have not paid yet this period" }
-  ) {
+  ask(input: { prompt: "Show me all members who have not paid yet this period" }) {
     answer
     model
     latencyMillis
@@ -367,68 +437,65 @@ query {
 }
 ```
 
-Response (example):
+The chatbox requires `ANTHROPIC_API_KEY` to be set. Without it, the `ask` query returns a
+provider-unavailable error; the rest of the API is unaffected.
 
-```json
-{
-  "data": {
-    "ask": {
-      "answer": "Three members currently have unpaid subscriptions:\n- Anna Müller — Gold Monthly, overdue 3 days\n- John Smith — Silver Monthly, within grace period\n- Lucas Weber — Training Only, IN_REVIEW",
-      "model": "claude-haiku-4-5-20251001",
-      "latencyMillis": 1104,
-      "promptTokens": 1820,
-      "completionTokens": 128
-    }
-  }
-}
-```
+### How it works
 
-### Available tools (Phase 1, read-only)
+1. `ChatAssistantController` validates and forwards to `ChatAssistantService`.
+2. The service checks a global rate limit (default: 30 requests/hour), then sends the prompt to
+   Anthropic Claude via Spring AI's `ChatClient`.
+3. Spring AI drives the tool-calling loop: Claude may call any `@Tool`-annotated read-only
+   method, gets the result, and continues until it emits a final text answer.
+4. The response is returned as `AskResult` with the answer, model id, token counts, and latency.
 
-| Tool class               | Methods                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| `MemberQueryTools`       | `listMembers`, `memberById`, `memberStatusHistory`                            |
-| `MembershipQueryTools`   | `listMembershipTypes`                                                         |
-| `SubscriptionQueryTools` | `subscriptionsForMember`, `overdueSubscriptions`, `pendingPaymentReviews`     |
-| `PaymentQueryTools`      | `paymentsForSubscription`, `paymentsForMember`, `outstandingPayments`         |
-| `SessionQueryTools`      | `listSessions`, `sessionsForMember`, `nextSessionForMember`                   |
-| `TrainerQueryTools`      | `listTrainers`, `trainerHours`, `pendingTrainerLogs`, `trainerPaymentSummary` |
+### Available tools (read-only)
 
-All tools are **read-only**. Mutating operations (creating members, recording
-payments, …) are **not** exposed to the LLM — they remain available only
-through the typed GraphQL API.
+| Tool class | Methods |
+|-----------|---------|
+| `MemberQueryTools` | `listMembers`, `memberById`, `memberStatusHistory` |
+| `MembershipQueryTools` | `listMembershipTypes` |
+| `SubscriptionQueryTools` | `subscriptionsForMember`, `overdueSubscriptions`, `pendingPaymentReviews` |
+| `PaymentQueryTools` | `paymentsForSubscription`, `paymentsForMember`, `outstandingPayments` |
+| `SessionQueryTools` | `listSessions`, `sessionsForMember`, `nextSessionForMember` |
+| `TrainerQueryTools` | `listTrainers`, `trainerHours`, `pendingTrainerLogs`, `trainerPaymentSummary` |
 
-### Configuration
+Mutating operations are not exposed to the LLM.
 
-| Property                                       | Default                     | Purpose                               |
-| ---------------------------------------------- | --------------------------- | ------------------------------------- |
-| `spring.ai.model.chat`                         | `anthropic`                 | Which Spring AI starter to activate   |
-| `spring.ai.anthropic.api-key`                  | (env `ANTHROPIC_API_KEY`)   | Anthropic API key                     |
-| `spring.ai.anthropic.chat.options.model`       | `claude-haiku-4-5-20251001` | Model id                              |
-| `spring.ai.anthropic.chat.options.temperature` | `0.2`                       | LLM temperature (low = deterministic) |
-| `spring.ai.anthropic.chat.options.max-tokens`  | `1024`                      | Per-call token cap                    |
-| `app.chatbox.enabled`                          | `true`                      | Master on/off switch                  |
-| `app.chatbox.rate-limit.requests-per-hour`     | `30`                        | Global sliding-window limit           |
+### Chatbox configuration
 
-### Current Phase 1 limitations
+| Property | Default | Purpose |
+|----------|---------|---------|
+| `spring.ai.anthropic.api-key` | `$ANTHROPIC_API_KEY` | Anthropic API key |
+| `spring.ai.anthropic.chat.options.model` | `claude-haiku-4-5-20251001` | Model id |
+| `spring.ai.anthropic.chat.options.temperature` | `0.2` | Determinism |
+| `spring.ai.anthropic.chat.options.max-tokens` | `1024` | Per-call token cap |
+| `app.chatbox.enabled` | `true` | Master on/off switch |
+| `app.chatbox.rate-limit.requests-per-hour` | `30` | Global sliding-window limit |
 
-- **No authentication** — there is no per-user identity, so the rate limit is
-  global across all callers. Phase 2 will add per-principal limits and role-gated
-  tool sets (see [Authorization](src/specs/chatbox/Chatbox.md#authorization)).
-- **No conversation memory** — each `ask` call is independent.
-- **No mutating tools** — the LLM cannot create, update, or delete data.
-- **Per-call tool trace** — the `toolCalls` field in `AskResult` is always an
-  empty list in Phase 1 (the internal trace is logged but not yet plumbed
-  through the GraphQL type). The schema field exists so the frontend can
-  start consuming it without a later schema change.
+---
 
 ## Testing
 
 ```bash
+# Run all tests
 ./gradlew test
+
+# Run a single test class
+./gradlew test --tests ClassName
+
+# Run a single test method
+./gradlew test --tests ClassName.methodName
+
+# Mutation testing
+./gradlew pitest
 ```
 
-Tests include unit tests for domain services and integration tests for the GraphQL API.
+Tests use H2 in-memory with the `test` profile. All integration tests extend
+`TenantAwareIntegrationTest`, which populates `TenantContext` (tenant id = 1, WAT Simmering)
+and provides a `@WithMockUser(roles = "ADMIN")` security context before each test.
+
+---
 
 ## License
 

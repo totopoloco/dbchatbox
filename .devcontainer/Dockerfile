@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
   procps \
   lsof \
   htop \
+  jq \
   pandoc \
   texlive-latex-base \
   texlive-latex-recommended \

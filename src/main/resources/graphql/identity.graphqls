@@ -1,0 +1,53 @@
+extend type Query {
+  "List all API keys for the current tenant (active and revoked)."
+  apiKeys: [ApiKeyInfo!]!
+}
+
+extend type Mutation {
+  """
+  Generate a new M2M API key for the current tenant.
+  The raw key is returned exactly once — it cannot be retrieved later.
+  """
+  generateApiKey(input: GenerateApiKeyInput!): GeneratedApiKey!
+
+  "Revoke an API key, preventing future authentication with it."
+  revokeApiKey(id: ID!): ApiKeyInfo!
+
+  """
+  Link an AppUser (identified by Keycloak subject) to a domain Member or Trainer.
+  At most one link may be active at a time. Pass null to clear a link.
+  """
+  linkAppUser(input: LinkAppUserInput!): CurrentUser!
+}
+
+"A persisted API key. The raw key is never returned after initial generation."
+type ApiKeyInfo {
+  id: ID!
+  label: String!
+  scope: String!
+  active: Boolean!
+  "Updated best-effort on each successful authentication."
+  lastUsedAt: DateTime
+  createdAt: DateTime!
+}
+
+"Returned once when a key is generated. rawKey must be saved immediately by the caller."
+type GeneratedApiKey {
+  "The plaintext API key. Store it now — it cannot be retrieved later."
+  rawKey: String!
+  apiKey: ApiKeyInfo!
+}
+
+input GenerateApiKeyInput {
+  "Human-readable label for management purposes (e.g. 'data-loader', 'ci-pipeline')."
+  label: String!
+}
+
+input LinkAppUserInput {
+  "Keycloak subject (sub claim) of the user to link."
+  keycloakSubject: String!
+  "Domain member to link to, or null to clear the member link."
+  memberId: ID
+  "Domain trainer to link to, or null to clear the trainer link."
+  trainerId: ID
+}

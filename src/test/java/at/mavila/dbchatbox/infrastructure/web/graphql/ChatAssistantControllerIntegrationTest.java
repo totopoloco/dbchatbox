@@ -17,11 +17,11 @@ import org.springframework.ai.chat.model.Generation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.graphql.test.autoconfigure.tester.AutoConfigureHttpGraphQlTester;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.graphql.test.tester.HttpGraphQlTester;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import at.mavila.dbchatbox.TenantAwareIntegrationTest;
 import at.mavila.dbchatbox.domain.chatbox.ChatRateLimiter;
 
 /**
@@ -44,14 +44,13 @@ import at.mavila.dbchatbox.domain.chatbox.ChatRateLimiter;
  *       the rate-limit path without flooding.</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureHttpGraphQlTester
-@AutoConfigureWebTestClient(timeout = "30s")
 @TestPropertySource(properties = {
     "spring.ai.anthropic.api-key=test-only",
     "app.chatbox.rate-limit.requests-per-hour=2"
 })
-class ChatAssistantControllerIntegrationTest {
+class ChatAssistantControllerIntegrationTest extends TenantAwareIntegrationTest {
 
   @Autowired
   private HttpGraphQlTester graphQlTester;

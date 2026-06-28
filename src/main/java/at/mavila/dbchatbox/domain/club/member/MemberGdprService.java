@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionRepository;
+import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -40,6 +41,7 @@ public class MemberGdprService {
   private final MemberStatusHistoryRepository statusHistoryRepository;
   private final MemberSubscriptionRepository subscriptionRepository;
   private final MemberService memberService;
+  private final TenantScopedFinder tenantScopedFinder;
 
   /**
    * Anonymizes a member's personal data and ends all active subscriptions.
@@ -55,31 +57,27 @@ public class MemberGdprService {
    *                                   if the member does not exist
    */
   public DeleteMemberResult deleteMember(final Long memberId) {
-    final Member member = memberRepository.findById(memberId).orElseThrow(() -> new MemberNotFoundException(memberId));
+    final Member member = tenantScopedFinder.findById(memberRepository, memberId)
+        .orElseThrow(() -> new MemberNotFoundException(memberId));
 
     final Status currentStatus = memberService.getCurrentStatus(member);
 
-    // Idempotent: already deleted
     if (currentStatus == Status.DELETED) {
       return new DeleteMemberResult(memberId, LocalDateTime.now(), List.of());
     }
 
-    // Anonymize personal data
     member.setFirstName(DELETED_NAME);
     member.setLastName(DELETED_NAME);
     member.setEmail(DELETED_EMAIL_TEMPLATE.formatted(memberId));
     member.setPhoneNumber(null);
     memberRepository.save(member);
 
-    // Null out reasons in status history (may contain personal data)
     final var history = statusHistoryRepository.findByMemberIdOrderByChangedAtDesc(memberId);
     history.forEach(entry -> entry.setReason(null));
     statusHistoryRepository.saveAll(history);
 
-    // End active subscriptions
     endActiveSubscriptions(memberId);
 
-    // Add DELETED status entry
     final MemberStatusHistory deletedEntry = MemberStatusHistory.builder().member(member).status(Status.DELETED)
         .changedAt(LocalDateTime.now()).reason(null).build();
     statusHistoryRepository.save(deletedEntry);
