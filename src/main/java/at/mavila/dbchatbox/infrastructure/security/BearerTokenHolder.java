@@ -1,42 +1,55 @@
 package at.mavila.dbchatbox.infrastructure.security;
 
+import static java.util.Objects.isNull;
+
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.annotation.RequestScope;
 
+import at.mavila.dbchatbox.domain.club.tenant.Tenant;
+import at.mavila.dbchatbox.domain.club.tenant.TenantService;
+import lombok.RequiredArgsConstructor;
+
 /**
- * Request-scoped accessor for the current Keycloak JWT.
+ * Request-scoped accessor for the bearer token forwarded to the Keycloak Admin REST API.
  *
- * <p>
- * Reads the raw bearer token from {@link SecurityContextHolder} on demand so any Spring component
- * can forward the caller's token to the Keycloak Admin REST API without threading it through method
- * signatures (decision D-1). A new instance is created per HTTP request, so the
- * {@code SecurityContextHolder} read in {@link #getToken()} always reflects the current request.
- * </p>
+ * <p>On the JWT path the caller's own token is returned directly. On the API-key path
+ * there is no user JWT, so a service-account token is obtained via the {@code club-m2m}
+ * client-credentials grant and cached for the lifetime of the request.</p>
  *
  * @since 2026-06-29
  */
 @Component
 @RequestScope
+@RequiredArgsConstructor
 public class BearerTokenHolder {
 
+    private final KeycloakAuthClient keycloakAuthClient;
+    private final TenantService tenantService;
+    private final KeycloakProperties keycloakProperties;
+
+    /** Cached M2M token — obtained at most once per request. */
+    private String cachedM2mToken;
+
     /**
-     * Returns the raw JWT value for the current request.
+     * Returns the bearer token for the current request.
      *
-     * @return the raw bearer token
-     * @throws IllegalStateException if the current authentication is not a {@link JwtAuthenticationToken}
-     *         (e.g. the API-key path) — callers reachable on the API-key path must guard with
-     *         {@link #isJwtPresent()} first
+     * <p>If the request carries a Keycloak JWT the raw token value is returned.
+     * Otherwise a service-account token is obtained from Keycloak using the
+     * {@code club-m2m} client credentials and cached for the lifetime of this
+     * request-scoped bean.</p>
+     *
+     * @return the raw bearer token value
+     * @throws IllegalStateException if no tenant context is available on the API-key path
      */
     public String getToken() {
         final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth instanceof JwtAuthenticationToken jwt) {
             return jwt.getToken().getTokenValue();
         }
-        throw new IllegalStateException(
-            "No JWT available in current request — BearerTokenHolder requires JWT authentication");
+        return m2mToken();
     }
 
     /**
@@ -46,5 +59,25 @@ public class BearerTokenHolder {
      */
     public boolean isJwtPresent() {
         return SecurityContextHolder.getContext().getAuthentication() instanceof JwtAuthenticationToken;
+    }
+
+    private String m2mToken() {
+        if (isNull(cachedM2mToken)) {
+            cachedM2mToken = fetchM2mToken();
+        }
+        return cachedM2mToken;
+    }
+
+    private String fetchM2mToken() {
+        final Long tenantId = TenantContext.getTenantId();
+        if (isNull(tenantId)) {
+            throw new IllegalStateException("No tenant context — cannot obtain M2M token");
+        }
+        final Tenant tenant = tenantService.requireById(tenantId);
+        return keycloakAuthClient.clientCredentials(
+            tenant.getKeycloakRealm(),
+            keycloakProperties.getM2mClientId(),
+            tenant.getM2mClientSecret()
+        ).accessToken();
     }
 }

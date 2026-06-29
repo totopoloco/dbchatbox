@@ -24,6 +24,10 @@ public class KeycloakAuthClient {
 
     private static final String GRANT_PASSWORD = "password";
     private static final String GRANT_REFRESH = "refresh_token";
+    private static final String GRANT_CLIENT_CREDENTIALS = "client_credentials";
+    private static final String PARAM_GRANT_TYPE = "grant_type";
+    private static final String PARAM_CLIENT_ID = "client_id";
+    private static final String PARAM_CLIENT_SECRET = "client_secret";
     private static final String TOKEN_PATH = "/realms/{realm}/protocol/openid-connect/token";
 
     private final KeycloakProperties props;
@@ -52,10 +56,28 @@ public class KeycloakAuthClient {
      */
     public AuthPayload login(final String realm, final String username, final String password) {
         final MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("grant_type", GRANT_PASSWORD);
-        form.add("client_id", props.getSpaClientId());
+        form.add(PARAM_GRANT_TYPE, GRANT_PASSWORD);
+        form.add(PARAM_CLIENT_ID, props.getSpaClientId());
         form.add("username", username);
         form.add("password", password);
+        return exchange(realm, form);
+    }
+
+    /**
+     * Obtains a service-account access token for the given realm using the
+     * {@code client_credentials} grant. Used by the API-key authentication path so
+     * Keycloak Admin API calls can proceed without a user JWT.
+     *
+     * @param realm        the Keycloak realm name
+     * @param clientId     the M2M client ID (e.g. {@code club-m2m})
+     * @param clientSecret the M2M client secret stored in {@link at.mavila.dbchatbox.domain.club.tenant.Tenant}
+     * @return the service-account auth payload (only {@code accessToken} is populated)
+     */
+    public AuthPayload clientCredentials(final String realm, final String clientId, final String clientSecret) {
+        final MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add(PARAM_GRANT_TYPE, GRANT_CLIENT_CREDENTIALS);
+        form.add(PARAM_CLIENT_ID, clientId);
+        form.add(PARAM_CLIENT_SECRET, clientSecret);
         return exchange(realm, form);
     }
 
@@ -68,8 +90,8 @@ public class KeycloakAuthClient {
      */
     public AuthPayload refresh(final String realm, final String refreshToken) {
         final MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("grant_type", GRANT_REFRESH);
-        form.add("client_id", props.getSpaClientId());
+        form.add(PARAM_GRANT_TYPE, GRANT_REFRESH);
+        form.add(PARAM_CLIENT_ID, props.getSpaClientId());
         form.add("refresh_token", refreshToken);
         return exchange(realm, form);
     }

@@ -25,6 +25,10 @@ public class KeycloakProperties {
     @NotEmpty
     private String spaClientId;
 
+    /** Keycloak client ID for the M2M service account (client-credentials grant). */
+    @NotEmpty
+    private String m2mClientId;
+
     /**
      * {@code String.format}-style template for the realm JWKS endpoint.
      * The single {@code %s} placeholder is replaced with the realm name.

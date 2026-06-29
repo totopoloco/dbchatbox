@@ -75,4 +75,13 @@ public class Tenant {
     /** When {@code false}, all logins and data access for this tenant are denied. */
     @Column(nullable = false)
     private boolean active = true;
+
+    /**
+     * Client secret for the {@code club-m2m} Keycloak client in this tenant's realm.
+     * Used by the API-key authentication path to obtain a service-account token when
+     * no user JWT is present.
+     */
+    @Size(max = 200)
+    @Column(name = "m2m_client_secret")
+    private String m2mClientSecret;
 }

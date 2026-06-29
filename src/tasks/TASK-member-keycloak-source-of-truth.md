@@ -1,6 +1,6 @@
 # TASK: Member Identity — Keycloak as Single Source of Truth
 
-**Status:** Not Started
+**Status:** Completed (2026-06-29)
 
 ---
 

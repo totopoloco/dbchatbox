@@ -12,7 +12,6 @@
   "bruteForceProtected": false,
   "accessTokenLifespan": 300,
   "passwordPolicy": "length(12) and upperCase(1) and lowerCase(1) and digits(1) and specialChars(1)",
-
   "roles": {
     "realm": [
       {
@@ -37,54 +36,49 @@
       }
     ]
   },
-
   "clients": [
     {
       "clientId": "club-spa",
       "name": "Club SPA",
       "enabled": true,
       "protocol": "openid-connect",
-
       "publicClient": true,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-
-      "redirectUris": ["http://localhost:3000/*"],
-
-      "webOrigins": ["http://localhost:3000"]
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ]
     },
     {
       "clientId": "club-m2m",
       "name": "Club M2M",
       "enabled": true,
       "protocol": "openid-connect",
-
       "publicClient": false,
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
-
       "secret": "ChangeMe-URW-M2M",
-
-      "defaultClientScopes": ["roles"],
-
+      "defaultClientScopes": [
+        "roles"
+      ],
       "optionalClientScopes": []
     }
   ],
-
   "users": [
     {
       "username": "admin.urw",
       "enabled": true,
       "emailVerified": true,
-
       "firstName": "Admin",
       "lastName": "URW",
       "email": "admin@union-rot-weiss.local",
-
       "credentials": [
         {
           "type": "password",
@@ -92,31 +86,37 @@
           "temporary": false
         }
       ],
-
-      "realmRoles": ["ADMIN"],
-
+      "realmRoles": [
+        "ADMIN"
+      ],
       "clientRoles": {
-        "realm-management": ["realm-admin"]
+        "realm-management": [
+          "realm-admin"
+        ]
       }
     },
-
     {
       "username": "member.urw",
       "enabled": true,
       "emailVerified": true,
-
       "firstName": "Member",
       "lastName": "URW",
       "email": "member@union-rot-weiss.local",
-
       "attributes": {
-        "memberId": ["551000000000000002"],
-        "phoneNumber": ["+43 676 2002"],
-        "memberSince": ["2024-02-20"],
+        "memberId": [
+          "551000000000000002"
+        ],
+        "phoneNumber": [
+          "+43 676 2002"
+        ],
+        "memberSince": [
+          "2024-02-20"
+        ],
         "memberUntil": [],
-        "memberUpdatedAt": ["2026-02-20T10:00:00+01:00"]
+        "memberUpdatedAt": [
+          "2026-02-20T10:00:00+01:00"
+        ]
       },
-
       "credentials": [
         {
           "type": "password",
@@ -124,19 +124,17 @@
           "temporary": false
         }
       ],
-
-      "realmRoles": ["MEMBER"]
+      "realmRoles": [
+        "MEMBER"
+      ]
     },
-
     {
       "username": "trainer.urw",
       "enabled": true,
       "emailVerified": true,
-
       "firstName": "Trainer",
       "lastName": "URW",
       "email": "trainer@union-rot-weiss.local",
-
       "credentials": [
         {
           "type": "password",
@@ -144,13 +142,25 @@
           "temporary": false
         }
       ],
-
-      "realmRoles": ["TRAINER"]
+      "realmRoles": [
+        "TRAINER"
+      ]
+    },
+    {
+      "username": "service-account-club-m2m",
+      "enabled": true,
+      "serviceAccountClientId": "club-m2m",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users"
+        ]
+      }
     }
   ],
-
-  "requiredCredentials": ["password"],
-
+  "requiredCredentials": [
+    "password"
+  ],
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
       {
@@ -163,7 +173,6 @@
       }
     ]
   },
-
   "eventsEnabled": true,
   "adminEventsEnabled": true,
   "adminEventsDetailsEnabled": true
