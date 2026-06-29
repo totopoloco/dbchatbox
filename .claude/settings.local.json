@@ -26,7 +26,16 @@
       "Bash(git commit *)",
       "Bash(xargs ls)",
       "Bash(xargs ls -la)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(xargs ls -lh)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(json.dumps\\(u, indent=2\\)\\) for u in d.get\\('users',[]\\)]\")",
+      "WebFetch(domain:www.baeldung.com)",
+      "WebSearch",
+      "WebFetch(domain:www.javathinking.com)",
+      "WebFetch(domain:www.keycloak.org)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:www.mastertheboss.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

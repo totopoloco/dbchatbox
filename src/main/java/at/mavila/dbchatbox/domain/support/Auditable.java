@@ -1,5 +1,8 @@
 package at.mavila.dbchatbox.domain.support;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 import java.time.OffsetDateTime;
 
 import at.mavila.dbchatbox.infrastructure.security.TenantContext;
@@ -11,19 +14,24 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Abstract JPA base class that provides automatic audit timestamps and tenant scoping
+ * Abstract JPA base class that provides automatic audit timestamps and tenant
+ * scoping
  * for all mutable domain entities.
  *
  * <p>
- * Subclasses inherit {@code createdAt}, {@code updatedAt}, and {@code tenantId} columns,
- * which are populated by JPA lifecycle callbacks — no application code sets them explicitly.
- * {@code createdAt} and {@code tenantId} are written once at insert and never modified;
+ * Subclasses inherit {@code createdAt}, {@code updatedAt}, and {@code tenantId}
+ * columns,
+ * which are populated by JPA lifecycle callbacks — no application code sets
+ * them explicitly.
+ * {@code createdAt} and {@code tenantId} are written once at insert and never
+ * modified;
  * {@code updatedAt} is refreshed on every update.
  * </p>
  *
  * <p>
  * Annotated with {@link MappedSuperclass} so JPA maps the inherited columns
- * into each owning entity's table — no separate {@code auditable} table is created.
+ * into each owning entity's table — no separate {@code auditable} table is
+ * created.
  * </p>
  *
  * @since 2026-05-01
@@ -34,7 +42,8 @@ public abstract class Auditable {
 
   /**
    * The timestamp at which this entity was first persisted. Set once by
-   * {@link #prePersist()} and never modified afterwards — the {@code updatable = false}
+   * {@link #prePersist()} and never modified afterwards — the
+   * {@code updatable = false}
    * column constraint prevents accidental overwrites by JPA.
    *
    * <p>
@@ -57,7 +66,8 @@ public abstract class Auditable {
   private OffsetDateTime updatedAt;
 
   /**
-   * The tenant that owns this entity. Set once at insert from {@link TenantContext}
+   * The tenant that owns this entity. Set once at insert from
+   * {@link TenantContext}
    * and never changed — the {@code updatable = false} constraint enforces this.
    *
    * <p>
@@ -79,15 +89,19 @@ public abstract class Auditable {
    */
   @PrePersist
   void prePersist() {
-    createdAt = OffsetDateTime.now();
-    updatedAt = OffsetDateTime.now();
-    if (this.tenantId == null) {
+    this.createdAt = OffsetDateTime.now();
+    this.updatedAt = OffsetDateTime.now();
+
+    if (isNull(this.tenantId)) {
       this.tenantId = TenantContext.getTenantId();
     }
-    if (this.tenantId == null) {
-      throw new IllegalStateException(
-          "Cannot persist a tenant-owned entity without a tenant in context");
+
+    if (nonNull(this.tenantId)) {
+      return;
     }
+
+    throw new IllegalStateException(
+        "Cannot persist a tenant-owned entity without a tenant in context");
   }
 
   /**
