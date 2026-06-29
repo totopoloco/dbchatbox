@@ -54,7 +54,15 @@
       "Bash(echo \"PID=$!\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('userProfile:', json.dumps\\(d.get\\('userProfile', 'MISSING'\\), indent=2\\)\\)\")",
       "Bash(python3 -c ' *)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)\\)\")",
+      "Bash(curl -s -X POST http://localhost:8180/realms/wat-simmering/protocol/openid-connect/token -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant_type=password&client_id=club-spa&username=member.anna&password=Member%23WAT2026')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s -X POST http://localhost:8180/realms/wat-simmering/protocol/openid-connect/token -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant_type=password&client_id=club-spa&username=admin.wat&password=Admin%23WAT2026')",
+      "Bash(curl -s -X POST http://localhost:8088/realms/wat-simmering/protocol/openid-connect/token -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant_type=password&client_id=club-spa&username=admin.wat&password=Admin%23WAT2026')",
+      "Bash(curl -s -X POST http://localhost:8088/realms/wat-simmering/protocol/openid-connect/token -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant_type=password&client_id=club-spa&username=member.anna&password=Member%23WAT2026')",
+      "Bash(curl -s -X POST http://keycloak:8088/realms/wat-simmering/protocol/openid-connect/token -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant_type=password&client_id=club-spa&username=admin.wat&password=Admin%23WAT2026')",
+      "Bash(curl -s -X POST http://keycloak:8088/realms/wat-simmering/protocol/openid-connect/token -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant_type=password&client_id=club-spa&username=member.anna&password=Member%23WAT2026')",
+      "Bash(curl -s -X POST http://localhost:8080/graphql -H 'Content-Type: application/json' -d '{\"query\":\"mutation { login\\(input: { tenantSlug: \\\\\"wat-simmering\\\\\", username: \\\\\"member.anna\\\\\", password: \\\\\"Member#WAT2026\\\\\" }\\) { accessToken } }\"}')"
     ]
   }
 }

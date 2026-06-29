@@ -140,7 +140,7 @@ public class KeycloakMemberService {
 
     final Map<String, List<String>> attrs = new LinkedHashMap<>();
     attrs.put("memberId", List.of(String.valueOf(id)));
-    attrs.put("updatedAt", List.of(OffsetDateTime.now().toString()));
+    attrs.put("memberUpdatedAt", List.of(OffsetDateTime.now().toString()));
 
     keycloakAdminClient.updateUser(realm, current.keycloakSubject(), new KeycloakUpdateUserRequest(
         DELETED, DELETED, DELETED_EMAIL_TEMPLATE.formatted(id), false, attrs));
@@ -198,7 +198,7 @@ public class KeycloakMemberService {
     if (nonNull(view.memberUntil())) {
       attrs.put("memberUntil", List.of(view.memberUntil().toString()));
     }
-    attrs.put("updatedAt", List.of(OffsetDateTime.now().toString()));
+    attrs.put("memberUpdatedAt", List.of(OffsetDateTime.now().toString()));
     return attrs;
   }
 

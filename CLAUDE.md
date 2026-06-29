@@ -74,7 +74,9 @@ src/main/java/at/mavila/dbchatbox/
 - `src/tasks/` — fine-grained implementation task files corresponding to Phase 2 spec sections
 - `src/AI_PROMPT_PIPELINE.md` — spec-to-code pipeline guide with worked examples
 
-**Tech stack:** Java 25 · Spring Boot 4.0.5 · Spring for GraphQL · JPA/Hibernate 7 · Flyway · H2 (dev/test) · PostgreSQL 16 (prod) · Lombok · TSID IDs · graphql-java-extended-scalars · Jakarta Bean Validation · Spring AI 2.0.0-M3 (Anthropic) for the chatbox · PIT mutation testing
+**Tech stack:** Java 25 · Spring Boot 4.0.7 · Spring for GraphQL · JPA/Hibernate 7 · Flyway · H2 (dev/test) · PostgreSQL 16 (prod) · Lombok · TSID IDs · graphql-java-extended-scalars · Jakarta Bean Validation · Spring AI 2.0.0-M3 (Anthropic) for the chatbox · PIT mutation testing
+
+> **Note:** The project compiles with `-parameters` so Spring AI's `ToolRegistry` can reflect on `@Tool` method parameter names to build JSON schemas. Do not remove this flag from `build.gradle`.
 
 **Entity base patterns:**
 - All mutable entities extend `Auditable` (`@MappedSuperclass` providing `createdAt`, `updatedAt`, and `tenantId` via `@PrePersist`/`@PreUpdate`). `tenantId` is read from `TenantContext` at insert and is immutable thereafter — never accept it from the client.
@@ -93,6 +95,8 @@ src/main/java/at/mavila/dbchatbox/
 **Domain-specific patterns:**
 - `Member` is a lean DB stub (TSID primary key + `keycloak_subject` + `tenantId` + `anonymized`). It carries **no PII** — name, email, phone, and dates live in Keycloak. `KeycloakMemberService` reads member lists and details from the Keycloak Admin REST API via `KeycloakAdminClient`; `MemberView` is the corresponding read model. Do not add PII columns back to the `member` table.
 - `Member` does not store a `status` field. Current status is always derived from the most recent `MemberStatusHistory` entry.
+- The `training/` package uses **custom cross-field constraint annotations** (`@ValidTimeRange`, `@ValidTrainerAssignment`) with matching `ConstraintValidator` implementations. Follow this same pattern for new cross-field business rules rather than adding logic to service methods.
+- `Auditable` lives in `domain/support/` — import it from there when adding new entities.
 - GraphQL scalars: `Date` (LocalDate), `DateTime` (OffsetDateTime), `LocalTime`, `BigDecimal`, `Long` — registered in `ScalarConfiguration`. `LocalDateTimeScalar` is a custom implementation for backward compatibility.
 - GraphiQL playground is available at `http://localhost:8080/graphql` (GET request).
 

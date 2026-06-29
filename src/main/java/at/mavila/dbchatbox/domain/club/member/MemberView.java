@@ -33,7 +33,7 @@ import java.time.OffsetDateTime;
  * @param createdAt
  *                        account creation timestamp (Keycloak {@code createdTimestamp})
  * @param updatedAt
- *                        last profile update timestamp (Keycloak {@code updatedAt} custom attribute)
+ *                        last profile update timestamp (Keycloak {@code memberUpdatedAt} custom attribute)
  * @since 2026-06-29
  */
 public record MemberView(

@@ -354,7 +354,7 @@ public class KeycloakAdminClient {
                 parseDate(attr(attributes, "memberSince")),
                 parseDate(attr(attributes, "memberUntil")),
                 epochMillisToOffset(createdTimestamp),
-                parseOffset(attr(attributes, "updatedAt")));
+                parseOffset(attr(attributes, "memberUpdatedAt")));
         }
     }
 

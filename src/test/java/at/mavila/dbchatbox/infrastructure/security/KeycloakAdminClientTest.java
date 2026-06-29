@@ -58,7 +58,7 @@ class KeycloakAdminClientTest {
                   "phoneNumber": ["+43 676 2001"],
                   "memberSince": ["2024-01-15"],
                   "memberUntil": ["2026-12-31"],
-                  "updatedAt":   ["2026-01-15T10:00:00+01:00"]
+                  "memberUpdatedAt":   ["2026-01-15T10:00:00+01:00"]
                 }
               }
             ]

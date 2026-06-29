@@ -9,7 +9,7 @@ import java.util.Map;
  * <p>
  * Field names mirror the Keycloak {@code UserRepresentation} so Jackson serialises them directly.
  * {@code attributes} carries the club-managed custom attributes ({@code memberId}, {@code phoneNumber},
- * {@code memberSince}, {@code memberUntil}, {@code updatedAt}) as Keycloak's
+ * {@code memberSince}, {@code memberUntil}, {@code memberUpdatedAt}) as Keycloak's
  * {@code Map<String, List<String>>} shape. A top-level record (not an inner type) because it is shared
  * between {@link KeycloakAdminClient} and the domain {@code KeycloakMemberService}.
  * </p>
