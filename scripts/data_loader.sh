@@ -185,17 +185,23 @@ load_tenant_data() {
   echo "    Member B: $member_b" >&2
 
   echo "  Creating subscription + payment" >&2
+  # Use the current month so the subscription is still active when the loader runs.
+  local current_month
+  current_month=$(date +%Y-%m-01)
+  local payment_day
+  payment_day=$(date +%Y-%m-05)
+
   local sub_a
   sub_a=$(gql_field_auth "$admin_token" ".data.subscribeMember.id" "mutation {
     subscribeMember(input: {
       memberId: \"$member_a\"
       membershipTypeId: \"$mt_basic\"
-      startDate: \"2026-01-01\"
+      startDate: \"$current_month\"
       agreedPrice: 49.00
     }) { id }
   }")
   gql_field_auth "$admin_token" ".data.recordPayment.id" \
-    "mutation { recordPayment(input: { memberSubscriptionId: \"$sub_a\", amount: 49.00, currency: \"EUR\", paymentDate: \"2026-01-05\", notes: \"January\" }) { id } }" \
+    "mutation { recordPayment(input: { memberSubscriptionId: \"$sub_a\", amount: 49.00, currency: \"EUR\", paymentDate: \"$payment_day\", notes: \"Current month\" }) { id } }" \
     >/dev/null
   echo "    Subscription: $sub_a (paid)" >&2
 
