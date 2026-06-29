@@ -13,10 +13,26 @@
   "accessTokenLifespan": 300,
   "roles": {
     "realm": [
-      { "name": "ADMIN",      "composite": false, "clientRole": false },
-      { "name": "MEMBER",     "composite": false, "clientRole": false },
-      { "name": "TRAINER",    "composite": false, "clientRole": false },
-      { "name": "API_CLIENT", "composite": false, "clientRole": false }
+      {
+        "name": "ADMIN",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "MEMBER",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "TRAINER",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "API_CLIENT",
+        "composite": false,
+        "clientRole": false
+      }
     ]
   },
   "clients": [
@@ -30,8 +46,12 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
-      "redirectUris": ["http://localhost:3000/*"],
-      "webOrigins": ["http://localhost:3000"]
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ]
     },
     {
       "clientId": "club-m2m",
@@ -44,7 +64,9 @@
       "serviceAccountsEnabled": true,
       "protocol": "openid-connect",
       "secret": "ChangeMe-URW-M2M",
-      "defaultClientScopes": ["roles"],
+      "defaultClientScopes": [
+        "roles"
+      ],
       "optionalClientScopes": []
     }
   ],
@@ -57,11 +79,21 @@
       "lastName": "URW",
       "email": "admin@union-rot-weiss.local",
       "credentials": [
-        { "type": "password", "value": "Admin#URW2026", "temporary": false }
+        {
+          "type": "password",
+          "value": "Admin#URW2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["ADMIN"],
+      "realmRoles": [
+        "ADMIN"
+      ],
       "clientRoles": {
-        "realm-management": ["view-users", "query-users", "manage-users"]
+        "realm-management": [
+          "view-users",
+          "query-users",
+          "manage-users"
+        ]
       }
     },
     {
@@ -72,16 +104,30 @@
       "lastName": "URW",
       "email": "member@union-rot-weiss.local",
       "attributes": {
-        "memberId":    ["551000000000000002"],
-        "phoneNumber": ["+43 676 2002"],
-        "memberSince": ["2024-02-20"],
+        "memberId": [
+          "551000000000000002"
+        ],
+        "phoneNumber": [
+          "+43 676 2002"
+        ],
+        "memberSince": [
+          "2024-02-20"
+        ],
         "memberUntil": [],
-        "updatedAt":   ["2026-02-20T10:00:00+01:00"]
+        "updatedAt": [
+          "2026-02-20T10:00:00+01:00"
+        ]
       },
       "credentials": [
-        { "type": "password", "value": "Member#URW2026", "temporary": false }
+        {
+          "type": "password",
+          "value": "Member#URW2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["MEMBER"]
+      "realmRoles": [
+        "MEMBER"
+      ]
     },
     {
       "username": "trainer.urw",
@@ -91,11 +137,22 @@
       "lastName": "URW",
       "email": "trainer@union-rot-weiss.local",
       "credentials": [
-        { "type": "password", "value": "Trainer#URW2026", "temporary": false }
+        {
+          "type": "password",
+          "value": "Trainer#URW2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["TRAINER"]
+      "realmRoles": [
+        "TRAINER"
+      ]
     }
   ],
   "defaultRoles": [],
-  "requiredCredentials": ["password"]
+  "requiredCredentials": [
+    "password"
+  ],
+  "userProfile": {
+    "unmanagedAttributePolicy": "ADMIN_EDIT"
+  }
 }

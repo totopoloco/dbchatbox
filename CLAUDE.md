@@ -27,7 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew pitest
 ```
 
-The devcontainer sets `SPRING_PROFILES_ACTIVE=dev` automatically. The chatbox feature requires `ANTHROPIC_API_KEY` to be exported in your shell before running `bootRun`; without it, Spring AI logs a warning and chatbox calls fail at runtime.
+The devcontainer sets `SPRING_PROFILES_ACTIVE=dev` automatically. The chatbox feature requires `ANTHROPIC_API_KEY` to be exported in your shell before running `bootRun`; without it, Spring AI logs a warning and chatbox calls fail at runtime. API-key auth requires `API_KEY_HMAC_SECRET` (dev falls back to a hard-coded pepper; production must override it).
 
 ## Architecture
 
@@ -39,7 +39,7 @@ src/main/java/at/mavila/dbchatbox/
 │   ├── club/
 │   │   ├── exception/      # Domain exceptions (MemberNotFound, DuplicateEmail, InvalidStatusTransition, ...)
 │   │   ├── identity/       # AppUser, ApiKey + services (M2M key generation/validation)
-│   │   ├── member/         # Member + status history + GDPR anonymization
+│   │   ├── member/         # Member (lean DB stub) + KeycloakMemberService + MemberView + status history + GDPR anonymization
 │   │   ├── membership/     # MembershipType + grace period
 │   │   ├── notification/   # NotificationService interface (logging-only mock)
 │   │   ├── payment/        # Payment + PaymentDocument upload/review workflow
@@ -65,10 +65,10 @@ src/main/java/at/mavila/dbchatbox/
 **Request flow:** GraphQL controller (`@QueryMapping` / `@MutationMapping` / `@SchemaMapping`) → domain service → JPA repository. There is no intermediate application-service layer — controllers depend on domain services directly.
 
 **Key files:**
-- `src/main/resources/graphql/schema.graphqls` — all queries, mutations, scalars, and types
+- `src/main/resources/graphql/` — GraphQL schema split across four files: `schema.graphqls` (core types, member, membership, payment, subscription, trainer, training), `auth.graphqls` (login/token), `identity.graphqls` (API keys), `realm.graphqls` (Keycloak realm member queries). Add new types/operations to the most relevant file.
 - `src/main/resources/application.properties` — GDPR cron (`app.gdpr.purge-cron`, `app.gdpr.retention-days=30`), payment/notification/chatbox/CORS settings
 - `src/main/resources/application-{dev,test,prod}.properties` — profile-specific config
-- `src/main/resources/db/migration/V1..V7_*.sql` — Flyway versioned migrations (`ddl-auto=validate`, so schema changes require a new migration). V7 adds the `tenant` and `api_key` tables and seeds three fixture tenants.
+- `src/main/resources/db/migration/V1..V8_*.sql` — Flyway versioned migrations (`ddl-auto=validate`, so schema changes require a new migration). V7 adds the `tenant` and `api_key` tables and seeds three fixture tenants. V8 removes PII columns from `member` (name, email, phone, dates) and adds `keycloak_subject` + `anonymized` — Keycloak is now the single source of truth for member identity.
 - `src/specs/club/ClubManagement.md` — Phase 1 product spec
 - `src/specs/ClubManagement-Phase2-Multitenancy-Auth.md` — Phase 2 spec (Keycloak + multi-tenancy, implemented)
 - `src/tasks/` — fine-grained implementation task files corresponding to Phase 2 spec sections
@@ -88,8 +88,10 @@ src/main/java/at/mavila/dbchatbox/
 - **API-key path:** `ApiKeyAuthenticationFilter` runs before the JWT filter, parses the `X-API-Key: cmk.<slug>.<raw>` header, HMAC-validates it via `ApiKeyHmacService`, sets both `SecurityContext` and `TenantContext`, and skips the JWT filter chain.
 - Per-operation authorization uses `@PreAuthorize` on controller methods (e.g. `hasRole('ADMIN')`). The HTTP layer permits all `/graphql` paths — URL-level rules would only fire once, but GraphQL is a single endpoint.
 - `ApiKey.keyHash` stores HMAC-SHA256 of the raw key (base64). The raw value is returned once at generation and never stored.
+- `TenantScopedFinder` centralises the "load by id within the current tenant" pattern — use it in services instead of `repo.findById()` to prevent cross-tenant data leakage. A `null` tenant always returns `Optional.empty()` (fail closed).
 
 **Domain-specific patterns:**
+- `Member` is a lean DB stub (TSID primary key + `keycloak_subject` + `tenantId` + `anonymized`). It carries **no PII** — name, email, phone, and dates live in Keycloak. `KeycloakMemberService` reads member lists and details from the Keycloak Admin REST API via `KeycloakAdminClient`; `MemberView` is the corresponding read model. Do not add PII columns back to the `member` table.
 - `Member` does not store a `status` field. Current status is always derived from the most recent `MemberStatusHistory` entry.
 - GraphQL scalars: `Date` (LocalDate), `DateTime` (OffsetDateTime), `LocalTime`, `BigDecimal`, `Long` — registered in `ScalarConfiguration`. `LocalDateTimeScalar` is a custom implementation for backward compatibility.
 - GraphiQL playground is available at `http://localhost:8080/graphql` (GET request).
@@ -99,7 +101,7 @@ src/main/java/at/mavila/dbchatbox/
 Specs live in `src/specs/<category>/`. When implementing a spec, touch these layers in order:
 
 1. **Domain** — `@Service`/`@Component` in `domain/club/<category>/`, command `record` with Jakarta Bean Validation annotations, custom exception in `domain/club/exception/` if needed. New entities must extend `Auditable` and use `@TsidGenerated`. If the schema changes, add a Flyway migration (next `V{n}__*.sql`).
-2. **Infrastructure** — add type/query/mutation to `schema.graphqls`, add `@QueryMapping`/`@MutationMapping` to the matching per-entity controller (or create a new `XController`), add a `@GraphQlExceptionHandler` method to `GraphQlExceptionAdvice` for every new domain exception.
+2. **Infrastructure** — add type/query/mutation to the appropriate schema file under `src/main/resources/graphql/` (see Key files above), add `@QueryMapping`/`@MutationMapping` to the matching per-entity controller (or create a new `XController`), add a `@GraphQlExceptionHandler` method to `GraphQlExceptionAdvice` for every new domain exception.
 3. **Tests** — domain test (`@SpringBootTest`, AssertJ), GraphQL integration test via `ExecutionGraphQlServiceTester` with raw query documents.
 4. **Docs** — Javadoc on every new/modified class and public method, update `README.md` if user-visible behavior changes.
 
