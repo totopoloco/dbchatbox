@@ -25,7 +25,8 @@
       "Bash(./gradlew compileJava compileTestJava --no-daemon)",
       "Bash(git commit *)",
       "Bash(xargs ls)",
-      "Bash(xargs ls -la)"
+      "Bash(xargs ls -la)",
+      "Bash(git push *)"
     ]
   }
 }
