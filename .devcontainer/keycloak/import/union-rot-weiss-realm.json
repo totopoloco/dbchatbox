@@ -97,8 +97,5 @@
     }
   ],
   "defaultRoles": [],
-  "requiredCredentials": ["password"],
-  "userProfile": {
-    "unmanagedAttributePolicy": "ADMIN_EDIT"
-  }
+  "requiredCredentials": ["password"]
 }
