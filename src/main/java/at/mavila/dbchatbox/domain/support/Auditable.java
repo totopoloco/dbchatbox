@@ -4,6 +4,7 @@ import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 
 import at.mavila.dbchatbox.infrastructure.security.TenantContext;
 import jakarta.persistence.Column;
@@ -89,8 +90,8 @@ public abstract class Auditable {
    */
   @PrePersist
   void prePersist() {
-    this.createdAt = OffsetDateTime.now();
-    this.updatedAt = OffsetDateTime.now();
+    this.createdAt = OffsetDateTime.now(ZoneId.systemDefault());
+    this.updatedAt = OffsetDateTime.now(ZoneId.systemDefault());
 
     if (isNull(this.tenantId)) {
       this.tenantId = TenantContext.getTenantId();
@@ -111,6 +112,6 @@ public abstract class Auditable {
    */
   @PreUpdate
   void preUpdate() {
-    updatedAt = OffsetDateTime.now();
+    updatedAt = OffsetDateTime.now(ZoneId.systemDefault());
   }
 }
