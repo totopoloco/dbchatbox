@@ -49,11 +49,13 @@ public class KeycloakAdminClient {
     private static final String ROLE_MEMBERS_PATH = "/admin/realms/{realm}/roles/{role}/users";
     private static final String USERS_PATH = "/admin/realms/{realm}/users";
     private static final String USER_BY_ID_PATH = "/admin/realms/{realm}/users/{id}";
-    private static final String ROLE_BY_NAME_PATH = "/admin/realms/{realm}/roles/{role}";
     private static final String USER_REALM_ROLES_PATH = "/admin/realms/{realm}/users/{id}/role-mappings/realm";
+    private static final String USER_AVAILABLE_ROLES_PATH = "/admin/realms/{realm}/users/{id}/role-mappings/realm/available";
     private static final String MEMBER_ROLE = "MEMBER";
 
     private static final ParameterizedTypeReference<List<KeycloakUserRepresentation>> USER_LIST_TYPE =
+        new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<List<KeycloakRoleRepresentation>> ROLE_LIST_TYPE =
         new ParameterizedTypeReference<>() {};
 
     private final RestClient restClient;
@@ -212,16 +214,26 @@ public class KeycloakAdminClient {
     }
 
     private void assignMemberRole(final String realm, final String userId) {
-        final KeycloakRoleRepresentation role = restClient.get()
-            .uri(b -> b.path(ROLE_BY_NAME_PATH).build(realm, MEMBER_ROLE))
+        final List<KeycloakRoleRepresentation> available = restClient.get()
+            .uri(b -> b.path(USER_AVAILABLE_ROLES_PATH).build(realm, userId))
             .header(HttpHeaders.AUTHORIZATION, bearer())
             .retrieve()
-            .body(KeycloakRoleRepresentation.class);
+            .body(ROLE_LIST_TYPE);
+        if (isNull(available)) {
+            return;
+        }
+        final KeycloakRoleRepresentation memberRole = available.stream()
+            .filter(r -> MEMBER_ROLE.equals(r.name()))
+            .findFirst()
+            .orElse(null);
+        if (isNull(memberRole)) {
+            return;
+        }
         restClient.post()
             .uri(b -> b.path(USER_REALM_ROLES_PATH).build(realm, userId))
             .header(HttpHeaders.AUTHORIZATION, bearer())
             .contentType(MediaType.APPLICATION_JSON)
-            .body(List.of(role))
+            .body(List.of(memberRole))
             .retrieve()
             .toBodilessEntity();
     }

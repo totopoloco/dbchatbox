@@ -46,7 +46,10 @@
       "Bash(pkill -9 -f \"DbchatboxApplication\")",
       "Bash(pkill -9 -f \"bootRun\")",
       "Bash(pkill -9 -f \"GradleDaemon.*bootRun\")",
-      "Bash(awk '{print $2}')"
+      "Bash(awk '{print $2}')",
+      "Bash(curl -s http://keycloak:8088/realms/master/protocol/openid-connect/token -d 'grant_type=password&client_id=admin-cli&username=admin&password=admin' -H 'Content-Type: application/x-www-form-urlencoded')",
+      "Bash(curl -v \"http://keycloak:8088/health/ready\")",
+      "Bash(grep -oP '[a-f0-9-]{36}$')"
     ]
   }
 }
