@@ -24,6 +24,7 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080/graphql}"
+KEYCLOAK_URL="${KEYCLOAK_URL:-http://keycloak:8088}"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-$(dirname "$0")/keycloak-credentials.txt}"
 VERIFY="${1:-}"
 
@@ -108,6 +109,61 @@ me_subject() {
   local token="$1"
   gql_field_auth "$token" ".data.me.keycloakSubject" \
     'query { me { keycloakSubject } }'
+}
+
+# ── Keycloak Admin helpers ────────────────────────────────────────────────────
+
+# Obtain a short-lived master-realm admin token (admin/admin, admin-cli client).
+get_master_token() {
+  curl -s -X POST \
+    "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "grant_type=password&client_id=admin-cli&username=admin&password=admin" \
+    | jq -r '.access_token'
+}
+
+# Grant realm-management/view-users + manage-users to the club-m2m service account.
+# Keycloak's realm import does not reliably apply clientRoles on service-account users
+# auto-created by serviceAccountsEnabled=true. This call is idempotent and safe to
+# repeat on every data-loader run.
+grant_m2m_roles() {
+  local realm="$1"
+  echo "  Granting realm-management roles to club-m2m service account in $realm" >&2
+  local master_token
+  master_token=$(get_master_token)
+
+  local m2m_client_id
+  m2m_client_id=$(curl -s \
+    -H "Authorization: Bearer $master_token" \
+    "$KEYCLOAK_URL/admin/realms/$realm/clients?clientId=club-m2m" \
+    | jq -r '.[0].id')
+
+  local sa_user_id
+  sa_user_id=$(curl -s \
+    -H "Authorization: Bearer $master_token" \
+    "$KEYCLOAK_URL/admin/realms/$realm/clients/$m2m_client_id/service-account-user" \
+    | jq -r '.id')
+
+  local rm_client_id
+  rm_client_id=$(curl -s \
+    -H "Authorization: Bearer $master_token" \
+    "$KEYCLOAK_URL/admin/realms/$realm/clients?clientId=realm-management" \
+    | jq -r '.[0].id')
+
+  local roles_json
+  roles_json=$(curl -s \
+    -H "Authorization: Bearer $master_token" \
+    "$KEYCLOAK_URL/admin/realms/$realm/clients/$rm_client_id/roles" \
+    | jq '[.[] | select(.name == "view-users" or .name == "manage-users")]')
+
+  curl -s -X POST \
+    -H "Authorization: Bearer $master_token" \
+    -H "Content-Type: application/json" \
+    "$KEYCLOAK_URL/admin/realms/$realm/users/$sa_user_id/role-mappings/clients/$rm_client_id" \
+    -d "$roles_json" \
+    >/dev/null
+
+  echo "    Done (sa_user=$sa_user_id)." >&2
 }
 
 # ── Per-tenant data loader ────────────────────────────────────────────────────
@@ -279,6 +335,18 @@ echo " Target: $BASE_URL"
 echo ""
 
 creds_reset
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Grant M2M service-account roles in all three realms
+# (Keycloak's realm import does not reliably apply clientRoles on service
+#  accounts auto-created by serviceAccountsEnabled=true, so we grant them
+#  explicitly via the master-realm Admin API on every run.)
+# ─────────────────────────────────────────────────────────────────────────────
+echo ">>> Granting club-m2m service-account roles (all realms)"
+grant_m2m_roles "wat-simmering"
+grant_m2m_roles "union-rot-weiss"
+grant_m2m_roles "asv-pressbaum-badminton"
+echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WAT Simmering (tenant 1)
