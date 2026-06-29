@@ -58,11 +58,9 @@ public class TrainerController {
    * @return hours summary including total hours, session count, and amount owed
    */
   @QueryMapping
-  public Map<String, Object> trainerHours(@Argument final Long trainerId, @Argument final LocalDate from,
-      @Argument final LocalDate to) {
-    final var summary = trainerLogService.getHoursSummary(trainerId, from, to);
-    return Map.of("trainer", summary.trainer(), "totalHours", summary.totalHours(), "sessionCount",
-        summary.sessionCount(), "totalOwed", summary.totalOwed(), "from", summary.from(), "to", summary.to());
+  public TrainerLogService.TrainerHoursSummary trainerHours(@Argument final Long trainerId,
+      @Argument final LocalDate from, @Argument final LocalDate to) {
+    return trainerLogService.getHoursSummary(trainerId, from, to);
   }
 
   /**
@@ -86,13 +84,9 @@ public class TrainerController {
    * @return payment summary with hourly rate, total owed, and breakdown
    */
   @QueryMapping
-  public Map<String, Object> trainerPaymentSummary(@Argument final Long trainerId, @Argument final LocalDate from,
-      @Argument final LocalDate to) {
-    final var summary = trainerLogService.getPaymentSummary(trainerId, from, to);
-    return Map.of("trainer", summary.trainer(), "from", summary.from(), "to", summary.to(), "approvedHours",
-        summary.approvedHours(), "approvedSessions", summary.approvedSessions(), "hourlyRate", summary.hourlyRate(),
-        "totalOwed", summary.totalOwed(), "paymentMode", summary.paymentMode(), "pendingHours", summary.pendingHours(),
-        "pendingSessions", summary.pendingSessions());
+  public TrainerLogService.TrainerPaymentSummary trainerPaymentSummary(@Argument final Long trainerId,
+      @Argument final LocalDate from, @Argument final LocalDate to) {
+    return trainerLogService.getPaymentSummary(trainerId, from, to);
   }
 
   /**
@@ -105,13 +99,9 @@ public class TrainerController {
    * @return payment summary with hourly rate, total owed, and breakdown
    */
   @QueryMapping
-  public Map<String, Object> myTrainerPaymentSummary(@Argument final Long trainerId, @Argument final LocalDate from,
-      @Argument final LocalDate to) {
-    final var summary = trainerLogService.getPaymentSummary(trainerId, from, to);
-    return Map.of("trainer", summary.trainer(), "from", summary.from(), "to", summary.to(), "approvedHours",
-        summary.approvedHours(), "approvedSessions", summary.approvedSessions(), "hourlyRate", summary.hourlyRate(),
-        "totalOwed", summary.totalOwed(), "paymentMode", summary.paymentMode(), "pendingHours", summary.pendingHours(),
-        "pendingSessions", summary.pendingSessions());
+  public TrainerLogService.TrainerPaymentSummary myTrainerPaymentSummary(@Argument final Long trainerId,
+      @Argument final LocalDate from, @Argument final LocalDate to) {
+    return trainerLogService.getPaymentSummary(trainerId, from, to);
   }
 
   // ==================== FIELD RESOLVERS ====================

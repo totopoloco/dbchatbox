@@ -8,13 +8,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationManagerResolver;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtDecoders;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationProvider;
 import org.springframework.security.oauth2.server.resource.authentication.JwtIssuerAuthenticationManagerResolver;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
 
+import at.mavila.dbchatbox.domain.club.tenant.Tenant;
 import at.mavila.dbchatbox.domain.club.tenant.TenantRepository;
 
 /**
@@ -36,6 +38,7 @@ public class TenantAuthenticationManagerResolver
         implements AuthenticationManagerResolver<HttpServletRequest> {
 
     private final TenantRepository tenantRepository;
+    private final KeycloakProperties keycloakProperties;
 
     private final Map<String, AuthenticationManager> managers = new ConcurrentHashMap<>();
 
@@ -56,12 +59,11 @@ public class TenantAuthenticationManagerResolver
      * @throws InvalidBearerTokenException if the issuer is unknown or Keycloak is unreachable
      */
     private AuthenticationManager forIssuer(final String issuer) {
-        if (tenantRepository.findByIssuerUri(issuer).isEmpty()) {
-            throw new InvalidBearerTokenException("Untrusted issuer: " + issuer);
-        }
+        final Tenant tenant = tenantRepository.findByIssuerUri(issuer)
+            .orElseThrow(() -> new InvalidBearerTokenException("Untrusted issuer: " + issuer));
         return managers.computeIfAbsent(issuer, iss -> {
             try {
-                final JwtDecoder decoder = JwtDecoders.fromIssuerLocation(iss);
+                final JwtDecoder decoder = buildDecoder(tenant, iss);
                 final JwtAuthenticationProvider provider = new JwtAuthenticationProvider(decoder);
                 provider.setJwtAuthenticationConverter(
                     KeycloakRealmRoleConverter.jwtAuthenticationConverter());
@@ -72,5 +74,18 @@ public class TenantAuthenticationManagerResolver
                     "Keycloak unreachable for issuer %s: %s".formatted(iss, ex.getMessage()), ex);
             }
         });
+    }
+
+    /**
+     * Builds a {@link NimbusJwtDecoder} that fetches JWKS from the internal Keycloak
+     * hostname (so devcontainer-to-Keycloak connections succeed) while still validating
+     * the {@code iss} claim against the externally-visible issuer URI stored in the DB.
+     */
+    private JwtDecoder buildDecoder(final Tenant tenant, final String issuer) {
+        final String jwksUri = keycloakProperties.getBaseUrl()
+            + keycloakProperties.getJwksPathTemplate().formatted(tenant.getKeycloakRealm());
+        final NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwksUri).build();
+        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuer));
+        return decoder;
     }
 }

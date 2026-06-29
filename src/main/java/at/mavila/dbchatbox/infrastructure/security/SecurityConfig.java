@@ -49,6 +49,7 @@ public class SecurityConfig {
     SecurityFilterChain filterChain(final HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
+            .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(reg -> reg
                 .requestMatchers("/graphql", "/graphiql", "/graphiql/**").permitAll()

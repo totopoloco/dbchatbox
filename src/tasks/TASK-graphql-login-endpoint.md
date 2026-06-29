@@ -1,6 +1,6 @@
 # TASK: GraphQL Login Endpoint (Keycloak password grant)
 
-**Status:** Pending
+**Status:** Complete
 
 > Adds `login`, `refreshToken`, and `me` to the GraphQL schema so the existing SPA can sign a user into
 > a tenant and obtain a token. Implements

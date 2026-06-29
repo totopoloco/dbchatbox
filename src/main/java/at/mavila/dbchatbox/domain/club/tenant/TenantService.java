@@ -1,5 +1,8 @@
 package at.mavila.dbchatbox.domain.club.tenant;
 
+import static java.util.Objects.isNull;
+
+import at.mavila.dbchatbox.domain.club.exception.InvalidTenantException;
 import at.mavila.dbchatbox.domain.club.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -35,11 +38,14 @@ public class TenantService {
      *
      * @param slug the URL-safe tenant identifier
      * @return the active tenant
-     * @throws ResourceNotFoundException if no active tenant exists for that slug
+     * @throws InvalidTenantException if the slug is blank, unknown, or inactive
      */
     public Tenant requireBySlug(final String slug) {
+        if (isNull(slug) || slug.isBlank()) {
+            throw new InvalidTenantException("Tenant slug must not be blank");
+        }
         return tenantRepository.findBySlugAndActiveIsTrue(slug)
-            .orElseThrow(() -> new ResourceNotFoundException("Tenant", slug));
+            .orElseThrow(() -> new InvalidTenantException("Invalid or unknown tenant: %s".formatted(slug)));
     }
 
     /**

@@ -1,6 +1,6 @@
 # TASK: Machine-to-Machine Access via `x-api-key`
 
-**Status:** Pending
+**Status:** Complete
 
 > Implements the M2M mechanism in
 > [ClubManagement-Phase2-Multitenancy-Auth](../specs/club/ClubManagement-Phase2-Multitenancy-Auth.md)

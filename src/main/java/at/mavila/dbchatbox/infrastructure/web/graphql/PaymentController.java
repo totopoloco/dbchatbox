@@ -69,14 +69,12 @@ public class PaymentController {
    * @return list of outstanding payment summaries
    */
   @QueryMapping
-  public List<Map<String, Object>> outstandingPayments() {
+  public List<MemberPaymentStatus> outstandingPayments() {
     return paymentService.findOutstandingPayments().stream().map(info -> {
       final MemberSubscription sub = info.subscription();
       final Member member = sub.getMember();
       final MembershipType type = sub.getMembershipType();
-
-      return Map.<String, Object>of("member", member, "subscription", sub, "membershipType", type, "amountDue",
-          sub.getAgreedPrice(), "amountPaid", info.amountPaid(), "outstanding", info.outstanding());
+      return new MemberPaymentStatus(member, sub, type, sub.getAgreedPrice(), info.amountPaid(), info.outstanding());
     }).toList();
   }
 
@@ -139,20 +137,13 @@ public class PaymentController {
    * @return list of overdue subscription details
    */
   @QueryMapping
-  public List<Map<String, Object>> overdueSubscriptions() {
+  public List<OverdueSubscription> overdueSubscriptions() {
     return subscriptionService.findOverdueSubscriptions().stream().map(sub -> {
       final Member member = sub.getMember();
       final MembershipType type = sub.getMembershipType();
       final LocalDate dueDate = sub.getStartDate().plusDays(type.getGracePeriodDays());
-      final long daysOverdue = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
-
-      return Map.<String, Object>of(
-          "member", member,
-          "subscription", sub,
-          "membershipType", type,
-          "paymentStatus", sub.getPaymentStatus().name(),
-          "dueDate", dueDate,
-          "daysOverdue", (int) daysOverdue);
+      final int daysOverdue = (int) ChronoUnit.DAYS.between(dueDate, LocalDate.now());
+      return new OverdueSubscription(member, sub, type, sub.getPaymentStatus().name(), dueDate, daysOverdue);
     }).toList();
   }
 

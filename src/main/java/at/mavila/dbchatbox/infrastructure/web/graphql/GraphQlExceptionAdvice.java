@@ -9,6 +9,8 @@ import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.DuplicateNameException;
 import at.mavila.dbchatbox.domain.club.exception.InvalidOperationException;
 import at.mavila.dbchatbox.domain.club.exception.InvalidStatusTransitionException;
+import at.mavila.dbchatbox.domain.club.exception.InvalidTenantException;
+import at.mavila.dbchatbox.domain.club.exception.KeycloakAdminException;
 import at.mavila.dbchatbox.domain.club.exception.MemberDeletedException;
 import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
 import at.mavila.dbchatbox.domain.club.exception.OverlapException;
@@ -36,6 +38,36 @@ public class GraphQlExceptionAdvice {
   @GraphQlExceptionHandler({ MemberNotFoundException.class, ResourceNotFoundException.class })
   public GraphQLError handleNotFound(final RuntimeException ex, final DataFetchingEnvironment env) {
     return GraphQLError.newError().message(ex.getMessage()).errorType(graphql.ErrorType.DataFetchingException)
+        .path(env.getExecutionStepInfo().getPath()).build();
+  }
+
+  /**
+   * Handles Keycloak Admin API failures (e.g. insufficient permissions to list realm users)
+   * as {@code DataFetchingException} so the caller receives a structured error instead of
+   * an opaque {@code INTERNAL_ERROR}.
+   *
+   * @param ex  the Keycloak admin exception
+   * @param env the data-fetching environment
+   * @return a GraphQL error with the exception message
+   */
+  @GraphQlExceptionHandler(KeycloakAdminException.class)
+  public GraphQLError handleKeycloakAdmin(final KeycloakAdminException ex, final DataFetchingEnvironment env) {
+    return GraphQLError.newError().message(ex.getMessage()).errorType(graphql.ErrorType.DataFetchingException)
+        .path(env.getExecutionStepInfo().getPath()).build();
+  }
+
+  /**
+   * Handles unknown or blank tenant slugs as {@code ValidationError}.
+   * Surfaces a user-safe message so callers can correct their input instead
+   * of receiving an opaque {@code INTERNAL_ERROR}.
+   *
+   * @param ex  the invalid-tenant exception
+   * @param env the data-fetching environment
+   * @return a GraphQL error with the exception message
+   */
+  @GraphQlExceptionHandler(InvalidTenantException.class)
+  public GraphQLError handleInvalidTenant(final InvalidTenantException ex, final DataFetchingEnvironment env) {
+    return GraphQLError.newError().message(ex.getMessage()).errorType(graphql.ErrorType.ValidationError)
         .path(env.getExecutionStepInfo().getPath()).build();
   }
 

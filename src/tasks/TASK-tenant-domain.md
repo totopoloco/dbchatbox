@@ -1,6 +1,6 @@
 # TASK: Tenant Domain, Migration & Tenant Scoping
 
-**Status:** Pending
+**Status:** Complete
 
 > Implements the data-layer half of [ClubManagement-Phase2-Multitenancy-Auth](../specs/club/ClubManagement-Phase2-Multitenancy-Auth.md).
 > Adds the `Tenant` domain, puts a `tenant_id` on every tenant-owned table, and makes all reads

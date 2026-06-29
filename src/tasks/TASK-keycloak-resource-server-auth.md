@@ -1,6 +1,6 @@
 # TASK: OAuth2 Resource Server — Keycloak JWT, Roles, Tenant Resolution
 
-**Status:** Pending
+**Status:** Complete
 
 > Turns the backend into a multi-issuer OAuth2 resource server that validates Keycloak access tokens,
 > maps realm roles to Spring authorities, resolves the tenant from the token issuer, and links the

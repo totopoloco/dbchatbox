@@ -1,6 +1,6 @@
 # TASK: Keycloak Service in the Devcontainer + Realm Provisioning
 
-**Status:** Pending
+**Status:** Complete
 
 > Stands up Keycloak in `.devcontainer/docker-compose.yml` and provisions one realm per tenant
 > (`wat-simmering`, `union-rot-weiss`, `asv-pressbaum-badminton`) with roles, clients, and demo users,

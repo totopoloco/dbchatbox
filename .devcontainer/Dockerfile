@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
   htop \
   jq \
   net-tools \
+  iputils-ping \
   pandoc \
   texlive-latex-base \
   texlive-latex-recommended \

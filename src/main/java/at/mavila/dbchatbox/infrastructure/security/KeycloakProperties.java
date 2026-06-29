@@ -24,4 +24,11 @@ public class KeycloakProperties {
     /** Keycloak client ID for the SPA (direct-access grant). */
     @NotEmpty
     private String spaClientId;
+
+    /**
+     * {@code String.format}-style template for the realm JWKS endpoint.
+     * The single {@code %s} placeholder is replaced with the realm name.
+     */
+    @NotEmpty
+    private String jwksPathTemplate = "/realms/%s/protocol/openid-connect/certs";
 }

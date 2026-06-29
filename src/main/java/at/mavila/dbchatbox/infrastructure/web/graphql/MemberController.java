@@ -125,10 +125,8 @@ public class MemberController {
    * @return the erasure result with anonymised field details
    */
   @MutationMapping
-  public Map<String, Object> deleteMember(@Argument final Long id) {
-    final var result = memberGdprService.deleteMember(id);
-    return Map.of("memberId", result.memberId().toString(), "anonymizedAt", result.anonymizedAt().toString(),
-        "fieldsAnonymized", result.fieldsAnonymized());
+  public MemberGdprService.DeleteMemberResult deleteMember(@Argument final Long id) {
+    return memberGdprService.deleteMember(id);
   }
 
   // ==================== TYPE RESOLVERS ====================

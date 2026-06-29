@@ -1,0 +1,17 @@
+extend type Query {
+  """
+  Admin-only: lists all Keycloak users carrying the MEMBER role in the
+  current tenant's realm. Requires the caller to have the ADMIN realm role.
+  """
+  realmMembers: [RealmUser!]!
+}
+
+"A user record sourced directly from the Keycloak realm (Admin REST API)."
+type RealmUser {
+  id: String!
+  username: String!
+  firstName: String
+  lastName: String
+  email: String
+  enabled: Boolean!
+}
