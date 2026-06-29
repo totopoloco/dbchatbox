@@ -287,8 +287,11 @@ public class KeycloakAdminClient {
 
     private static KeycloakAdminException forbidden() {
         return new KeycloakAdminException(
-            "The ADMIN account lacks the required Keycloak 'realm-management' client roles "
-            + "(view-users / manage-users). Add them to the ADMIN users in the realm import.");
+            "The caller's Keycloak account lacks the required 'realm-management' client roles "
+            + "(view-users / manage-users / view-realm). Note that listing members hits "
+            + "GET /roles/{role}/users, which Keycloak guards with view-realm — view-users alone "
+            + "is not enough. For the JWT path grant these to the ADMIN user; for the API-key "
+            + "(M2M) path grant them to the club-m2m service account via scripts/data_loader.sh.");
     }
 
     private static KeycloakAdminException unauthorized() {

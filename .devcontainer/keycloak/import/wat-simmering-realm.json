@@ -98,6 +98,7 @@
     {
       "username": "member.anna",
       "enabled": true,
+      "createdTimestamp": 1705276800000,
       "emailVerified": true,
       "firstName": "Anna",
       "lastName": "WAT",
@@ -153,7 +154,8 @@
       "clientRoles": {
         "realm-management": [
           "view-users",
-          "manage-users"
+          "manage-users",
+          "view-realm"
         ]
       }
     }

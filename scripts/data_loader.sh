@@ -122,10 +122,18 @@ get_master_token() {
     | jq -r '.access_token'
 }
 
-# Grant realm-management/view-users + manage-users to the club-m2m service account.
+# Grant realm-management/view-users + manage-users + view-realm to the club-m2m
+# service account.
 # Keycloak's realm import does not reliably apply clientRoles on service-account users
 # auto-created by serviceAccountsEnabled=true. This call is idempotent and safe to
 # repeat on every data-loader run.
+#
+# view-realm is required IN ADDITION to view-users because the app lists members via
+# GET /admin/realms/{realm}/roles/MEMBER/users (users-in-realm-role). Keycloak guards
+# that endpoint with the realm-level "view-realm" permission, not "view-users" — a
+# token with only view-users gets 200 on /users but 403 on /roles/{role}/users.
+# The ADMIN user JWT works because realm-admin already includes view-realm; the M2M
+# service account does not, so it must be granted explicitly.
 grant_m2m_roles() {
   local realm="$1"
   echo "  Granting realm-management roles to club-m2m service account in $realm" >&2
@@ -154,7 +162,7 @@ grant_m2m_roles() {
   roles_json=$(curl -s \
     -H "Authorization: Bearer $master_token" \
     "$KEYCLOAK_URL/admin/realms/$realm/clients/$rm_client_id/roles" \
-    | jq '[.[] | select(.name == "view-users" or .name == "manage-users")]')
+    | jq '[.[] | select(.name == "view-users" or .name == "manage-users" or .name == "view-realm")]')
 
   curl -s -X POST \
     -H "Authorization: Bearer $master_token" \
