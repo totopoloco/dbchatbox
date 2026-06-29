@@ -35,10 +35,17 @@ public class ChatAssistantController {
   /**
    * Handles the {@code ask(input: AskInput!): AskResult!} query.
    *
+   * <p>
+   * Restricted to JWT-authenticated human roles (decision D-4): API-key callers carry only
+   * {@code ROLE_M2M} and are rejected here, so any tool invoked downstream can rely on a JWT being
+   * present (the member tools forward it to the Keycloak Admin API).
+   * </p>
+   *
    * @param input GraphQL input map: {@code { prompt: String!, locale: String }}
    * @return synthesised answer plus metadata
    */
   @QueryMapping
+  @PreAuthorize("hasRole('ADMIN') or hasRole('MEMBER') or hasRole('TRAINER')")
   public AskResult ask(@Argument("input") final Map<String, Object> input) {
     final String prompt = (String) input.get("prompt");
     final String locale = (String) input.get("locale");

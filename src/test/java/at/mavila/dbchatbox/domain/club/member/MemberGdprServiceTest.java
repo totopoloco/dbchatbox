@@ -51,8 +51,7 @@ class MemberGdprServiceTest {
   @BeforeEach
   void setUp() {
     TenantContext.setTenantId(1L);
-    sampleMember = Member.builder().id(1L).firstName("John").lastName("Doe").email("john@example.com")
-        .phoneNumber("+123456789").memberSince(LocalDate.of(2024, 1, 1)).build();
+    sampleMember = Member.builder().id(1L).keycloakSubject("kc-1").build();
   }
 
   @AfterEach
@@ -61,7 +60,7 @@ class MemberGdprServiceTest {
   }
 
   @Test
-  void shouldAnonymizeMemberPersonalData() {
+  void shouldFlagMemberAnonymizedAndRecordDeletedStatus() {
     when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
     when(memberService.getCurrentStatus(sampleMember)).thenReturn(Status.ACTIVE);
     when(statusHistoryRepository.findByMemberIdOrderByChangedAtDesc(1L)).thenReturn(List.of());
@@ -77,20 +76,35 @@ class MemberGdprServiceTest {
     final var result = gdprService.deleteMember(1L);
 
     assertThat(result.memberId()).isEqualTo(1L);
-    assertThat(result.fieldsAnonymized()).containsExactlyInAnyOrder("firstName", "lastName", "email", "phoneNumber");
-    verify(memberRepository).save(argThat(
-        m -> m.getFirstName().equals("DELETED") && m.getLastName().equals("DELETED") && m.getPhoneNumber() == null));
+    assertThat(result.fieldsAnonymized()).contains("member.anonymized");
+    verify(memberRepository).save(argThat(Member::isAnonymized));
+    verify(statusHistoryRepository).save(argThat(h -> h.getStatus() == Status.DELETED));
   }
 
   @Test
-  void shouldBeIdempotentForAlreadyDeletedMember() {
+  void shouldBeIdempotentForAlreadyAnonymizedMember() {
+    sampleMember.setAnonymized(true);
     when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
-    when(memberService.getCurrentStatus(sampleMember)).thenReturn(Status.DELETED);
 
     final var result = gdprService.deleteMember(1L);
 
     assertThat(result.fieldsAnonymized()).isEmpty();
     verify(memberRepository, never()).save(any());
+  }
+
+  @Test
+  void shouldNotRecordSecondDeletedEntryWhenAlreadyDeleted() {
+    when(tenantScopedFinder.findById(memberRepository, 1L)).thenReturn(Optional.of(sampleMember));
+    when(memberService.getCurrentStatus(sampleMember)).thenReturn(Status.DELETED);
+    when(statusHistoryRepository.findByMemberIdOrderByChangedAtDesc(1L)).thenReturn(List.of());
+    when(subscriptionRepository.findByMemberIdAndEndDateGreaterThanEqual(anyLong(), any(LocalDate.class)))
+        .thenReturn(List.of());
+    when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
+
+    gdprService.deleteMember(1L);
+
+    verify(memberRepository).save(argThat(Member::isAnonymized));
+    verify(statusHistoryRepository, never()).save(any());
   }
 
   @Test

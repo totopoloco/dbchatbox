@@ -161,6 +161,12 @@ load_tenant_data() {
     "mutation { changeMembershipTypeStatus(id: \"$mt_basic\", status: \"ACTIVE\") { id } }" >/dev/null
   echo "    MembershipType Basic: $mt_basic" >&2
 
+  # createMember now writes to Keycloak (Admin API), not the member table. It generates a TSID,
+  # creates a Keycloak user with that TSID as the `memberId` attribute, assigns the MEMBER realm
+  # role, and upserts a lean DB stub keyed by the same TSID. The mutation is idempotent: on a
+  # re-run where Keycloak still holds these users (e.g. H2 was reset by an app restart but the
+  # Keycloak volume persisted), the 409 conflict is resolved by reading the existing user's
+  # `memberId` and re-creating only the DB stub. The returned id is captured exactly as before.
   echo "  Creating members" >&2
   local member_a
   member_a=$(gql_field_auth "$admin_token" ".data.createMember.id" "mutation {

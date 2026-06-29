@@ -1,6 +1,5 @@
 package at.mavila.dbchatbox.domain.chatbox.tools;
 
-import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 import java.time.LocalDate;
@@ -12,9 +11,10 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 import at.mavila.dbchatbox.domain.club.exception.MemberNotFoundException;
-import at.mavila.dbchatbox.domain.club.member.Member;
+import at.mavila.dbchatbox.domain.club.member.KeycloakMemberService;
 import at.mavila.dbchatbox.domain.club.member.MemberService;
 import at.mavila.dbchatbox.domain.club.member.MemberStatusHistory;
+import at.mavila.dbchatbox.domain.club.member.MemberView;
 import at.mavila.dbchatbox.domain.club.member.Status;
 import lombok.RequiredArgsConstructor;
 
@@ -34,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class MemberQueryTools {
 
+  private final KeycloakMemberService keycloakMemberService;
   private final MemberService memberService;
 
   /**
@@ -54,7 +55,7 @@ public class MemberQueryTools {
           """) final String status) {
 
     final Status statusEnum = nonNull(status) && !status.isBlank() ? Status.valueOf(status) : null;
-    return memberService.findAll(statusEnum).stream()
+    return keycloakMemberService.findAll(statusEnum).stream()
         .map(this::toSummary)
         .toList();
   }
@@ -72,8 +73,7 @@ public class MemberQueryTools {
       @ToolParam(description = "The member's TSID (the same id string returned by listMembers).")
       final Long id) {
     try {
-      final Member member = memberService.findById(id);
-      return isNull(member) ? null : toSummary(member);
+      return toSummary(keycloakMemberService.findById(id));
     } catch (final MemberNotFoundException ex) {
       return null;
     }
@@ -98,16 +98,16 @@ public class MemberQueryTools {
   // entity → DTO mapping
   // ---------------------------------------------------------------
 
-  private MemberSummary toSummary(final Member member) {
+  private MemberSummary toSummary(final MemberView member) {
     return new MemberSummary(
-        member.getId(),
-        member.getFirstName(),
-        member.getLastName(),
-        member.getEmail(),
-        member.getPhoneNumber(),
-        member.getMemberSince(),
-        member.getMemberUntil(),
-        memberService.getCurrentStatus(member).name());
+        member.id(),
+        member.firstName(),
+        member.lastName(),
+        member.email(),
+        member.phoneNumber(),
+        member.memberSince(),
+        member.memberUntil(),
+        keycloakMemberService.getCurrentStatus(member).name());
   }
 
   private StatusEntry toStatusEntry(final MemberStatusHistory history) {
@@ -122,7 +122,7 @@ public class MemberQueryTools {
   // ---------------------------------------------------------------
 
   /**
-   * Flat view of a {@link Member} for LLM consumption.
+   * Flat view of a {@link MemberView} for LLM consumption.
    */
   public record MemberSummary(
       Long id,

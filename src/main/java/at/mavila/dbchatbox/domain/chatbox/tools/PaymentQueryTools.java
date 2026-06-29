@@ -10,7 +10,9 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
+import at.mavila.dbchatbox.domain.club.member.KeycloakMemberService;
 import at.mavila.dbchatbox.domain.club.member.Member;
+import at.mavila.dbchatbox.domain.club.member.MemberView;
 import at.mavila.dbchatbox.domain.club.payment.Payment;
 import at.mavila.dbchatbox.domain.club.payment.PaymentService;
 import at.mavila.dbchatbox.domain.club.payment.PaymentService.OutstandingPaymentInfo;
@@ -28,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 public class PaymentQueryTools {
 
   private final PaymentService paymentService;
+  private final KeycloakMemberService keycloakMemberService;
 
   /**
    * All payments for a specific subscription.
@@ -94,11 +97,12 @@ public class PaymentQueryTools {
 
   private OutstandingPaymentSummary toOutstandingSummary(final OutstandingPaymentInfo info) {
     final MemberSubscription sub = info.subscription();
-    final Member member = sub.getMember();
+    final Member stub = sub.getMember();
+    final MemberView member = isNull(stub) ? null : keycloakMemberService.findById(stub.getId());
     return new OutstandingPaymentSummary(
         sub.getId(),
-        isNull(member) ? null : member.getId(),
-        isNull(member) ? null : "%s %s".formatted(member.getFirstName(), member.getLastName()),
+        isNull(member) ? null : member.id(),
+        isNull(member) ? null : "%s %s".formatted(member.firstName(), member.lastName()),
         sub.getMembershipType().getName(),
         sub.getAgreedPrice(),
         info.amountPaid(),

@@ -14,11 +14,19 @@ import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Handles GDPR right-to-erasure (Art. 17 DSGVO) for members.
+ * Handles the database side of GDPR right-to-erasure (Art. 17 DSGVO) for members.
  *
  * <p>
- * Anonymizes personal data in-place rather than physically deleting the member row, preserving referential integrity.
- * Payment records are retained for tax compliance (BAO §132).
+ * Personal data itself lives in Keycloak; the interactive {@code deleteMember} mutation scrubs the
+ * Keycloak account synchronously (see {@code KeycloakMemberService.anonymizeInKeycloak}). This
+ * service performs the DB-side steps: flagging the member row {@code anonymized}, clearing
+ * status-history reasons, and ending active subscriptions. Payment records are retained for tax
+ * compliance (BAO §132).
+ * </p>
+ *
+ * <p>
+ * It must not call Keycloak — it also runs from the {@code GdprPurgeJob} scheduled thread where no
+ * request-scoped JWT is available.
  * </p>
  *
  * @since 2026-04-09
@@ -29,13 +37,12 @@ import lombok.RequiredArgsConstructor;
 public class MemberGdprService {
 
   /**
-   * Sentinel value written into {@code firstName} / {@code lastName} when a
-   * member is anonymized. Promoted to {@code public} so {@code GdprPurgeJob}
-   * can share the same constant when querying for "not-yet-anonymized" rows
-   * — there is exactly one definition of "anonymized" in this codebase.
+   * Fields reported as erased by a GDPR deletion: the personal data scrubbed from the Keycloak
+   * account (by the interactive mutation handler) plus the DB row's {@code anonymized} flag.
    */
-  public static final String DELETED_NAME = "DELETED";
-  private static final String DELETED_EMAIL_TEMPLATE = "deleted-%d@anonymous.local";
+  private static final List<String> ANONYMIZED_FIELDS =
+      List.of("keycloak.firstName", "keycloak.lastName", "keycloak.email", "keycloak.phoneNumber",
+          "member.anonymized");
 
   private final MemberRepository memberRepository;
   private final MemberStatusHistoryRepository statusHistoryRepository;
@@ -44,10 +51,13 @@ public class MemberGdprService {
   private final TenantScopedFinder tenantScopedFinder;
 
   /**
-   * Anonymizes a member's personal data and ends all active subscriptions.
+   * Performs the DB-side GDPR erasure for a member: flags the row anonymized, clears status-history
+   * reasons, ends active subscriptions, and records a {@code DELETED} status entry if the member is
+   * not already in that state.
    *
    * <p>
-   * This operation is idempotent — calling it on an already-deleted member returns success.
+   * Idempotent — calling it on an already-anonymized member returns success without further writes,
+   * which also keeps the nightly {@code GdprPurgeJob} from re-processing the same rows.
    * </p>
    *
    * @param memberId
@@ -60,16 +70,13 @@ public class MemberGdprService {
     final Member member = tenantScopedFinder.findById(memberRepository, memberId)
         .orElseThrow(() -> new MemberNotFoundException(memberId));
 
-    final Status currentStatus = memberService.getCurrentStatus(member);
-
-    if (currentStatus == Status.DELETED) {
+    if (member.isAnonymized()) {
       return new DeleteMemberResult(memberId, LocalDateTime.now(), List.of());
     }
 
-    member.setFirstName(DELETED_NAME);
-    member.setLastName(DELETED_NAME);
-    member.setEmail(DELETED_EMAIL_TEMPLATE.formatted(memberId));
-    member.setPhoneNumber(null);
+    final Status currentStatus = memberService.getCurrentStatus(member);
+
+    member.setAnonymized(true);
     memberRepository.save(member);
 
     final var history = statusHistoryRepository.findByMemberIdOrderByChangedAtDesc(memberId);
@@ -78,12 +85,18 @@ public class MemberGdprService {
 
     endActiveSubscriptions(memberId);
 
+    final LocalDateTime anonymizedAt = recordDeletedStatusIfNeeded(member, currentStatus);
+    return new DeleteMemberResult(memberId, anonymizedAt, ANONYMIZED_FIELDS);
+  }
+
+  private LocalDateTime recordDeletedStatusIfNeeded(final Member member, final Status currentStatus) {
+    if (currentStatus == Status.DELETED) {
+      return LocalDateTime.now();
+    }
     final MemberStatusHistory deletedEntry = MemberStatusHistory.builder().member(member).status(Status.DELETED)
         .changedAt(LocalDateTime.now()).reason(null).build();
     statusHistoryRepository.save(deletedEntry);
-
-    return new DeleteMemberResult(memberId, deletedEntry.getChangedAt(),
-        List.of("firstName", "lastName", "email", "phoneNumber"));
+    return deletedEntry.getChangedAt();
   }
 
   private void endActiveSubscriptions(final Long memberId) {

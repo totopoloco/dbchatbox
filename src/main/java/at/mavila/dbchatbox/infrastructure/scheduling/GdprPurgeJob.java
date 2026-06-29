@@ -51,8 +51,7 @@ public class GdprPurgeJob {
     log.info("GDPR purge job started, retention-days={}", retentionDays);
     final LocalDateTime cutoff = LocalDateTime.now().minusDays(retentionDays);
 
-    final List<Long> candidateIds = memberRepository.findGdprPurgeCandidateIds(
-        Status.DELETED, cutoff, MemberGdprService.DELETED_NAME);
+    final List<Long> candidateIds = memberRepository.findGdprPurgeCandidateIds(Status.DELETED, cutoff);
 
     int purged = 0;
     for (final Long memberId : candidateIds) {

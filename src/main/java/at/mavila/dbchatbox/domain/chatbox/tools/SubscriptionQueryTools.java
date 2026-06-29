@@ -11,7 +11,9 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
+import at.mavila.dbchatbox.domain.club.member.KeycloakMemberService;
 import at.mavila.dbchatbox.domain.club.member.Member;
+import at.mavila.dbchatbox.domain.club.member.MemberView;
 import at.mavila.dbchatbox.domain.club.membership.MembershipType;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionService;
@@ -29,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 public class SubscriptionQueryTools {
 
   private final MemberSubscriptionService subscriptionService;
+  private final KeycloakMemberService keycloakMemberService;
 
   /**
    * Lists a member's subscriptions. Handles questions like "what is Anna
@@ -90,14 +93,14 @@ public class SubscriptionQueryTools {
   // ---------------------------------------------------------------
 
   private SubscriptionSummary toSummary(final MemberSubscription sub) {
-    final Member member = sub.getMember();
+    final MemberView member = memberView(sub);
     final MembershipType type = sub.getMembershipType();
     final LocalDate today = LocalDate.now();
 
     return new SubscriptionSummary(
         sub.getId(),
-        isNull(member) ? null : member.getId(),
-        isNull(member) ? null : "%s %s".formatted(member.getFirstName(), member.getLastName()),
+        isNull(member) ? null : member.id(),
+        isNull(member) ? null : "%s %s".formatted(member.firstName(), member.lastName()),
         type.getName(),
         sub.getStartDate(),
         sub.getEndDate(),
@@ -107,22 +110,31 @@ public class SubscriptionQueryTools {
   }
 
   private OverdueSubscriptionSummary toOverdueSummary(final MemberSubscription sub, final LocalDate today) {
-    final Member member = sub.getMember();
+    final MemberView member = memberView(sub);
     final MembershipType type = sub.getMembershipType();
     final LocalDate dueDate = sub.getStartDate().plusDays(type.getGracePeriodDays());
     final long daysOverdue = ChronoUnit.DAYS.between(dueDate, today);
 
     return new OverdueSubscriptionSummary(
         sub.getId(),
-        isNull(member) ? null : member.getId(),
-        isNull(member) ? null : "%s %s".formatted(member.getFirstName(), member.getLastName()),
-        isNull(member) ? null : member.getEmail(),
+        isNull(member) ? null : member.id(),
+        isNull(member) ? null : "%s %s".formatted(member.firstName(), member.lastName()),
+        isNull(member) ? null : member.email(),
         type.getName(),
         sub.getStartDate(),
         sub.getEndDate(),
         dueDate,
         (int) Math.max(0L, daysOverdue),
         sub.getPaymentStatus().name());
+  }
+
+  /**
+   * Resolves the Keycloak-sourced member view for a subscription, or {@code null} when the
+   * subscription has no member linked.
+   */
+  private MemberView memberView(final MemberSubscription sub) {
+    final Member member = sub.getMember();
+    return isNull(member) ? null : keycloakMemberService.findById(member.getId());
   }
 
   // ---------------------------------------------------------------

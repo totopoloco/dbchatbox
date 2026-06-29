@@ -1,9 +1,6 @@
 package at.mavila.dbchatbox.domain.club.member;
 
-import java.time.LocalDate;
-
 import at.mavila.dbchatbox.domain.support.Auditable;
-import at.mavila.dbchatbox.domain.support.TsidGenerated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -16,16 +13,22 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Represents a person's membership in the club — their identity, contact details, and when they joined.
+ * Lean reference to a club member. Since Keycloak became the single source of truth for member
+ * identity, this entity no longer holds any personal data (name, email, phone, membership dates) —
+ * those live in Keycloak as user attributes and are read via the Admin REST API.
  *
  * <p>
- * Status is <strong>not</strong> stored directly on this entity; it is derived from the most recent
- * {@link MemberStatusHistory} entry. Membership types are managed via {@code MemberSubscription}.
+ * What remains here is purely the stable join target that downstream domain tables
+ * ({@code member_status_history}, {@code member_subscription}, {@code app_user}) reference by FK:
+ * the TSID primary key, the link to the Keycloak subject, the tenant scope, and the GDPR
+ * anonymization flag. The TSID equals the {@code memberId} attribute stored against the matching
+ * Keycloak user, bridging Keycloak identity to all DB foreign keys.
  * </p>
  *
  * <p>
- * Inherits {@code createdAt} and {@code updatedAt} audit timestamps from
- * {@link at.mavila.dbchatbox.domain.support.Auditable}.
+ * Status is <strong>not</strong> stored directly on this entity; it is derived from the most recent
+ * {@link MemberStatusHistory} entry. Inherits {@code createdAt}, {@code updatedAt}, and
+ * {@code tenantId} from {@link at.mavila.dbchatbox.domain.support.Auditable}.
  * </p>
  *
  * @since 2026-04-09
@@ -39,27 +42,28 @@ import lombok.Setter;
 @Builder
 public class Member extends Auditable {
 
+  /**
+   * Primary key, assigned (not generated) from the Keycloak {@code memberId} attribute — the member
+   * identity owned by Keycloak. Equals the {@code memberId} of the matching realm user.
+   */
   @Id
-  @TsidGenerated
   private Long id;
 
-  @Column(name = "first_name", nullable = false, length = 100)
-  private String firstName;
+  /**
+   * The Keycloak user id (the {@code sub} claim) of the matching realm user. Nullable until the
+   * provisioning flow links it; unique per tenant.
+   */
+  @Column(name = "keycloak_subject", length = 64)
+  private String keycloakSubject;
 
-  @Column(name = "last_name", nullable = false, length = 100)
-  private String lastName;
-
-  @Column(nullable = false, unique = true)
-  private String email;
-
-  @Column(name = "phone_number")
-  private String phoneNumber;
-
-  @Column(name = "member_since", nullable = false)
-  private LocalDate memberSince;
-
-  @Column(name = "member_until")
-  private LocalDate memberUntil;
+  /**
+   * Set to {@code true} once the member's personal data has been GDPR-erased in Keycloak. Replaces
+   * the former {@code firstName == "DELETED"} sentinel that {@code GdprPurgeJob} used to detect
+   * already-scrubbed members.
+   */
+  @Column(nullable = false)
+  @Builder.Default
+  private boolean anonymized = false;
 
   @Version
   @Column(nullable = false)

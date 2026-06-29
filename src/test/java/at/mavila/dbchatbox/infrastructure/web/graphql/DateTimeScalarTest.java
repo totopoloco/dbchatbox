@@ -1,14 +1,28 @@
 package at.mavila.dbchatbox.infrastructure.web.graphql;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.graphql.test.autoconfigure.tester.AutoConfigureHttpGraphQlTester;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.graphql.test.tester.HttpGraphQlTester;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import at.mavila.dbchatbox.TenantAwareIntegrationTest;
+import at.mavila.dbchatbox.domain.club.member.KeycloakMemberService;
+import at.mavila.dbchatbox.domain.club.member.Member;
+import at.mavila.dbchatbox.domain.club.member.MemberRepository;
+import at.mavila.dbchatbox.domain.club.member.MemberStatusHistory;
+import at.mavila.dbchatbox.domain.club.member.MemberStatusHistoryRepository;
+import at.mavila.dbchatbox.domain.club.member.MemberView;
+import at.mavila.dbchatbox.domain.club.member.Status;
 
 /**
  * Integration tests verifying that all {@code DateTime!} schema fields serialize correctly when the backing Java type
@@ -28,18 +42,22 @@ class DateTimeScalarTest extends TenantAwareIntegrationTest {
   @Autowired
   private HttpGraphQlTester graphQlTester;
 
+  @MockitoBean
+  private KeycloakMemberService keycloakMemberService;
+
+  @Autowired
+  private MemberRepository memberRepository;
+
+  @Autowired
+  private MemberStatusHistoryRepository statusHistoryRepository;
+
   @Test
   void testCreatedAt_serializesOnMember() {
-    final String memberId = graphQlTester.document("""
-        mutation {
-            createMember(input: {
-                firstName: "DateTime"
-                lastName: "ScalarMember"
-                email: "datetime.scalar.member@test.com"
-                memberSince: "2026-01-01"
-            }) { id }
-        }
-        """).execute().path("createMember.id").entity(String.class).get();
+    final MemberView view = new MemberView(100L, "kc-100", "DateTime", "ScalarMember",
+        "datetime.scalar.member@test.com", null, LocalDate.of(2026, 1, 1), null,
+        OffsetDateTime.now(), OffsetDateTime.now());
+    when(keycloakMemberService.findById(100L)).thenReturn(view);
+    when(keycloakMemberService.getCurrentStatus(any())).thenReturn(Status.ACTIVE);
 
     graphQlTester.document("""
         query($id: ID!) {
@@ -48,23 +66,17 @@ class DateTimeScalarTest extends TenantAwareIntegrationTest {
                 createdAt
             }
         }
-        """).variable("id", memberId).execute().errors().satisfy(errors -> assertThat(errors).isEmpty())
+        """).variable("id", "100").execute().errors().satisfy(errors -> assertThat(errors).isEmpty())
         .path("memberById.createdAt").entity(String.class)
         .satisfies(value -> assertThat(value).isNotBlank().contains("T"));
   }
 
   @Test
   void testChangedAt_serializesOnMemberStatusHistory() {
-    final String memberId = graphQlTester.document("""
-        mutation {
-            createMember(input: {
-                firstName: "DateTime"
-                lastName: "StatusMember"
-                email: "datetime.status.member@test.com"
-                memberSince: "2026-01-01"
-            }) { id }
-        }
-        """).execute().path("createMember.id").entity(String.class).get();
+    final Member stub = memberRepository.saveAndFlush(
+        Member.builder().id(600L).keycloakSubject("kc-600").build());
+    statusHistoryRepository.saveAndFlush(MemberStatusHistory.builder()
+        .member(stub).status(Status.ACTIVE).changedAt(LocalDateTime.now()).build());
 
     graphQlTester.document("""
         query($mid: ID!) {
@@ -74,7 +86,7 @@ class DateTimeScalarTest extends TenantAwareIntegrationTest {
                 createdAt
             }
         }
-        """).variable("mid", memberId).execute().errors().satisfy(errors -> assertThat(errors).isEmpty())
+        """).variable("mid", "600").execute().errors().satisfy(errors -> assertThat(errors).isEmpty())
         .path("memberStatusHistory[0].changedAt").entity(String.class)
         .satisfies(value -> assertThat(value).isNotBlank().contains("T"));
   }

@@ -5,8 +5,6 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Controller;
 
 import at.mavila.dbchatbox.domain.club.tenant.Tenant;
@@ -42,10 +40,7 @@ public class RealmMemberController {
     @QueryMapping
     @PreAuthorize("hasRole('ADMIN')")
     public List<RealmUser> realmMembers() {
-        final JwtAuthenticationToken jwt =
-            (JwtAuthenticationToken) SecurityContextHolder.getContext().getAuthentication();
-        final String bearerToken = jwt.getToken().getTokenValue();
         final Tenant tenant = tenantService.requireById(TenantContext.getTenantId());
-        return keycloakAdminClient.getMembersInRealm(tenant.getKeycloakRealm(), bearerToken);
+        return keycloakAdminClient.getMembersInRealm(tenant.getKeycloakRealm());
     }
 }

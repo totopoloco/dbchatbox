@@ -61,7 +61,7 @@
       ],
       "realmRoles": ["ADMIN"],
       "clientRoles": {
-        "realm-management": ["view-users", "query-users"]
+        "realm-management": ["view-users", "query-users", "manage-users"]
       }
     },
     {
@@ -71,6 +71,13 @@
       "firstName": "Member",
       "lastName": "ASV",
       "email": "member@asv-pressbaum-badminton.local",
+      "attributes": {
+        "memberId":    ["551000000000000003"],
+        "phoneNumber": ["+43 676 2003"],
+        "memberSince": ["2024-03-10"],
+        "memberUntil": [],
+        "updatedAt":   ["2026-03-10T10:00:00+01:00"]
+      },
       "credentials": [
         { "type": "password", "value": "Member#ASV2026", "temporary": false }
       ],
@@ -90,5 +97,8 @@
     }
   ],
   "defaultRoles": [],
-  "requiredCredentials": ["password"]
+  "requiredCredentials": ["password"],
+  "userProfile": {
+    "unmanagedAttributePolicy": "ADMIN_EDIT"
+  }
 }

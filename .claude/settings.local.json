@@ -35,7 +35,18 @@
       "WebFetch(domain:www.keycloak.org)",
       "WebFetch(domain:medium.com)",
       "WebFetch(domain:www.mastertheboss.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(./gradlew compileJava -q)",
+      "Bash(./gradlew compileTestJava -q)",
+      "Bash(python3 - build/test-results/test/TEST-at.mavila.dbchatbox.infrastructure.web.graphql.DateTimeScalarTest.xml)",
+      "Bash(SPRING_PROFILES_ACTIVE=dev ./gradlew bootRun)",
+      "Bash(echo \"started bootRun pid $!\")",
+      "Bash(pkill -f \"DbchatboxApplication\")",
+      "Bash(pkill -f \"bootRun\")",
+      "Bash(pkill -9 -f \"DbchatboxApplication\")",
+      "Bash(pkill -9 -f \"bootRun\")",
+      "Bash(pkill -9 -f \"GradleDaemon.*bootRun\")",
+      "Bash(awk '{print $2}')"
     ]
   }
 }
