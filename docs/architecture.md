@@ -429,7 +429,7 @@ mindmap
       currentTenant 🔒
     Members
       members 🔒
-      memberById(id) 🔒
+      memberById 🔒
       memberStatusHistory 🔒
       createMember 🔒
       updateMember 🔒
