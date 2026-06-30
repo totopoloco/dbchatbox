@@ -66,7 +66,10 @@
       "Bash(cd /workspace *)",
       "Bash(curl -s -X POST http://localhost:8080/graphql -H 'Content-Type: application/json' -H 'X-API-Key: cmk.wat-simmering.Y28p89ldGOxDmX3n3gV56TQjIld3v8LI' -d '{\"query\":\"query { members { firstName email currentStatus } }\"}')",
       "Bash(jq)",
-      "Bash(curl -s -X POST http://localhost:8080/graphql -H 'Content-Type: application/json' -H 'X-API-Key: cmk.wat-simmering.Y28p89ldGOxDmX3n3gV56TQjIld3v8LI' -d '{\"query\":\"query MyQuery { members { firstName email currentStatus createdAt lastName memberSince } }\"}')"
+      "Bash(curl -s -X POST http://localhost:8080/graphql -H 'Content-Type: application/json' -H 'X-API-Key: cmk.wat-simmering.Y28p89ldGOxDmX3n3gV56TQjIld3v8LI' -d '{\"query\":\"query MyQuery { members { firstName email currentStatus createdAt lastName memberSince } }\"}')",
+      "Bash(grep -nE \"^#{2,3} \" docs/architecture.md)",
+      "Bash(grep -c '```mermaid' docs/architecture.md)",
+      "Bash(grep -c '^```$' docs/architecture.md)"
     ],
     "additionalDirectories": [
       "/workspace/src/main/java/at/mavila/dbchatbox/infrastructure/security"

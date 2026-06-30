@@ -1,6 +1,8 @@
 # Club Management System — Architecture
 
-> **Tech stack:** Java 25 · Spring Boot 4.0.5 · Spring for GraphQL · Spring AI 2.0 · Keycloak 26 · JPA/Hibernate 7 · Flyway · H2 (dev) · PostgreSQL 16 (prod)
+> **Tech stack:** Java 25 · Spring Boot 4.0.7 · Spring for GraphQL · Spring AI 2.0 · Keycloak 26 · JPA/Hibernate 7 · Flyway · H2 (dev) · PostgreSQL 16 (prod)
+
+> **Identity model:** Keycloak is the **single source of truth for member identity** (name, email, phone, membership dates). The `member` table is a lean, PII-free join stub. See [§7 Member Identity](#7-member-identity--keycloak-as-source-of-truth).
 
 ---
 
@@ -91,10 +93,14 @@ sequenceDiagram
     GQL   ->> GQL:  Validate iss, sig, exp → set SecurityContext
     GQL   ->> GQL:  TenantResolutionFilter → TenantContext.set(tenantId)
     GQL   ->> GQL:  @PreAuthorize("hasRole('ADMIN')") — pass/fail
-    GQL   ->> DB:   memberRepository.findAllByTenantId(tenantId)
-    DB   -->> GQL:  List<Member>
-    GQL  -->> User: JSON response
+    GQL   ->> KC:   KeycloakMemberService → KeycloakAdminClient<br/>GET /roles/MEMBER/users (forwards caller's JWT)
+    KC   -->> GQL:  user attributes → List<MemberView>
+    GQL   ->> DB:   @SchemaMapping resolvers: currentStatus (status history)<br/>+ subscriptions — scoped to tenantId
+    DB   -->> GQL:  status + subscriptions
+    GQL  -->> User: JSON response (members assembled from Keycloak + DB)
 ```
+
+> **Note:** member reads no longer hit the `member` table — identity comes from Keycloak's Admin REST API (`GET /admin/realms/{realm}/roles/MEMBER/users`). Only the *current status* and *subscriptions* are resolved from the database. See [§7](#7-member-identity--keycloak-as-source-of-truth).
 
 ---
 
@@ -107,6 +113,8 @@ sequenceDiagram
     participant GQL  as Spring GraphQL<br/>/graphql
     participant AKAF as ApiKeyAuthenticationFilter
     participant AKS  as ApiKeyService
+    participant BTH  as BearerTokenHolder
+    participant KC   as Keycloak<br/>Admin REST
     participant DB   as Database
 
     Client ->> GQL:  query members { ... }  X-API-Key: cmk.asv-pressbaum-badminton.abc123
@@ -121,10 +129,19 @@ sequenceDiagram
     AKAF   ->> GQL:  chain.doFilter → continues
     GQL    ->> GQL:  TenantResolutionFilter → TenantContext.set(tenantId from ApiKey)
     GQL    ->> GQL:  @PreAuthorize check — ROLE_M2M accepted / ROLE_ADMIN rejected
-    GQL    ->> DB:   query scoped to tenantId
+
+    note over GQL,KC: members query needs Keycloak — but there is no user JWT to forward
+    GQL    ->> BTH:  KeycloakAdminClient.bearer()
+    BTH    ->> KC:   POST /token  grant_type=client_credentials (club-m2m + secret)
+    KC    -->> BTH:  service-account access_token (cached for the request)
+    GQL    ->> KC:   GET /roles/MEMBER/users  (service account needs view-realm)
+    KC    -->> GQL:  user attributes → List<MemberView>
+    GQL    ->> DB:   status history + subscriptions scoped to tenantId
     DB    -->> GQL:  result
     GQL   -->> Client: JSON response
 ```
+
+> **M2M token fallback:** API-key callers have no user JWT, so any operation that calls the Keycloak Admin REST API (e.g. `members`) obtains a **service-account token** via the per-tenant `club-m2m` client-credentials grant. The secret lives in `tenant.m2m_client_secret` (Flyway **V9**); `BearerTokenHolder` caches the token per request. The service account must hold the realm-management roles `view-users`, `manage-users`, **and `view-realm`** — the last is required because members are listed via the `/roles/{role}/users` endpoint. These roles are granted idempotently by `scripts/data_loader.sh` (realm-import JSON does not reliably apply roles to auto-created service-account users).
 
 ---
 
@@ -192,7 +209,59 @@ sequenceDiagram
 
 ---
 
-## 7. Domain Layer Map
+## 7. Member Identity — Keycloak as Source of Truth
+
+Member identity moved out of the database and into Keycloak (Flyway **V8**). The `member` table is now a lean, **PII-free** join stub; all personal data — name, email, phone, and membership dates — lives on the Keycloak realm user and is read back through the Admin REST API into a `MemberView` read model.
+
+```mermaid
+graph LR
+    subgraph KC["Keycloak realm user — source of truth for PII"]
+        STD["Standard fields<br/>firstName · lastName · email · enabled"]
+        ATTR["Custom attributes<br/>memberId (TSID) · phoneNumber<br/>memberSince · memberUntil · memberUpdatedAt"]
+        CT["createdTimestamp<br/>→ MemberView.createdAt"]
+    end
+
+    subgraph DBM["DB — member table (lean stub, no PII)"]
+        STUB["id = TSID (equals the memberId attribute)<br/>keycloak_subject · tenant_id<br/>anonymized · version"]
+    end
+
+    subgraph FK["DB tables that reference member.id"]
+        SH["member_status_history<br/>(current status = latest entry)"]
+        MS["member_subscription"]
+        AU["app_user"]
+    end
+
+    KMS["KeycloakMemberService<br/>reads + writes Keycloak,<br/>owns the lean stub"]
+    MSVC["MemberService<br/>status history (DB only)"]
+    MV["MemberView<br/>backs the GraphQL Member type"]
+
+    KMS -->|"Admin REST:<br/>list / create / update / anonymize"| KC
+    KMS -->|"upsert stub + initial ACTIVE status"| STUB
+    KC --> MV
+    STUB -. "id join (memberId)" .- MV
+    MSVC --> SH
+    STUB --> SH & MS & AU
+```
+
+**Read / write split**
+
+| Concern | Owner | Storage |
+|---|---|---|
+| Name, email, phone, membership dates, account enabled | `KeycloakMemberService` → `KeycloakAdminClient` | Keycloak user (standard fields + custom attributes) |
+| Stable member id (TSID), Keycloak link, tenant scope, GDPR flag | `KeycloakMemberService` (upserts the stub) | `member` table |
+| Current status + status history | `MemberService` | `member_status_history` (status derived from the latest row) |
+| Read projection for GraphQL | `MemberView` | assembled from Keycloak + DB, joined on `member.id == memberId` |
+
+**Key points**
+
+- **`Member` carries no PII and no `@TsidGenerated`.** Its `@Id` is *assigned* from the Keycloak `memberId` attribute (a TSID minted by `KeycloakMemberService.createMember`), so the database id and the Keycloak identity always agree. The stub exists only as an FK target for `member_status_history`, `member_subscription`, and `app_user`.
+- **GDPR erasure** scrubs name/email and disables the account in Keycloak (keeping only `memberId`), then flips the stub's `anonymized` flag — which replaced the former `firstName == "DELETED"` sentinel that `GdprPurgeJob` used.
+- **Custom-attribute naming gotcha:** the "last updated" attribute is `memberUpdatedAt`, **not** `updatedAt` — Keycloak reserves `updated_at` for an internal epoch-integer claim, and an ISO-8601 string there breaks ROPC token issuance.
+- **Realm-import fixtures** must carry an explicit `createdTimestamp`; Keycloak does not auto-populate it on import and treats it as read-only afterwards. Because `Member.createdAt` is a non-null `DateTime!` sourced from Keycloak, one fixture missing the timestamp fails the entire `members` query.
+
+---
+
+## 8. Domain Layer Map
 
 How the domain packages relate to each other.
 
@@ -201,7 +270,7 @@ graph TD
     subgraph Domain["domain/club"]
         IDN["identity<br/>AppUser · ApiKey<br/>ApiKeyService · AppUserService"]
         TNT["tenant<br/>Tenant · TenantService"]
-        MBR["member<br/>Member · MemberService<br/>MemberGdprService · StatusHistory"]
+        MBR["member<br/>Member (lean stub) · MemberView<br/>KeycloakMemberService · MemberService<br/>MemberGdprService · StatusHistory"]
         SUB["subscription<br/>MemberSubscription<br/>MemberSubscriptionService"]
         MBT["membership<br/>MembershipType<br/>MembershipTypeService"]
         PAY["payment<br/>Payment · PaymentDocument<br/>PaymentService · PaymentDocumentService"]
@@ -213,8 +282,11 @@ graph TD
         TOOLS["@Tool wrappers<br/>Member · Payment · Subscription<br/>Trainer · Session · Membership"]
     end
 
+    KCX["Keycloak<br/>(member PII)"]
+
     IDN --> TNT
     TNT --> MBR
+    MBR -->|"Admin REST"| KCX
     MBR --> SUB
     SUB --> MBT
     MBR --> PAY
@@ -227,9 +299,9 @@ graph TD
 
 ---
 
-## 8. Infrastructure Layer Map
+## 9. Infrastructure Layer Map
 
-### 8a. Security wiring
+### 9a. Security wiring
 
 ```mermaid
 graph TB
@@ -251,8 +323,9 @@ graph TB
 
     subgraph Clients["Keycloak Clients"]
         direction LR
-        KAC["KeycloakAuthClient<br/>(login / refresh)"]
-        KADM["KeycloakAdminClient<br/>(realmMembers)"]
+        KAC["KeycloakAuthClient<br/>(login / refresh /<br/>m2m client-credentials)"]
+        KADM["KeycloakAdminClient<br/>(member CRUD · realmMembers)"]
+        BTH["BearerTokenHolder<br/>(request-scoped:<br/>user JWT or M2M token)"]
     end
 
     subgraph Props["Properties"]
@@ -267,9 +340,11 @@ graph TB
     AKAF --> AKHS & AKP
     TAMR --> KRRC & KP
     TRF  --> TC
+    KADM --> BTH
+    BTH  --> KAC & KP
 ```
 
-### 8b. Controllers & scheduling
+### 9b. Controllers & scheduling
 
 ```mermaid
 graph LR
@@ -296,14 +371,17 @@ graph LR
 
     AUTH --> KAC2["KeycloakAuthClient"]
     RMC  --> KADM2["KeycloakAdminClient"]
+    MBC  --> KMS2["KeycloakMemberService<br/>(member identity via Keycloak)"]
     GDPR --> MBC
 ```
 
 ---
 
-## 9. Devcontainer Topology
+## 10. Devcontainer Topology
 
 What runs where when `docker compose up` starts.
+
+> Inside the devcontainer, Keycloak is reachable at `http://keycloak:8088` (Docker DNS) — **not** `localhost:8088`. Keycloak auto-imports the three realm JSONs on startup (`start-dev --import-realm`). After the app is up, `scripts/data_loader.sh` (a) grants the `club-m2m` service account the `view-users` / `manage-users` / `view-realm` realm-management roles in all three realms, (b) seeds members/trainers/subscriptions, and (c) writes fresh API keys to `scripts/keycloak-credentials.txt` (regenerated every run).
 
 ```mermaid
 graph TB
@@ -337,7 +415,7 @@ graph TB
 
 ---
 
-## 10. GraphQL Schema Surface
+## 11. GraphQL Schema Surface
 
 A bird's-eye view of every query and mutation, grouped by domain.
 
@@ -351,12 +429,12 @@ mindmap
       currentTenant 🔒
     Members
       members 🔒
-      member(id) 🔒
+      memberById(id) 🔒
+      memberStatusHistory 🔒
       createMember 🔒
       updateMember 🔒
+      changeMemberStatus 🔒
       deleteMember 🔒
-      memberStatusHistory 🔒
-      anonymizeMember 🔒
     Realm
       realmMembers 👑
     Identity
@@ -404,7 +482,8 @@ mindmap
 | **One Keycloak realm per tenant** | Strict isolation; no cross-tenant token leakage possible at the IdP level |
 | **JWT issuer → tenant resolution** | The `iss` claim carries the realm URL, which maps 1-to-1 to a `Tenant` row — no separate tenant header needed |
 | **API keys for M2M** | Avoids OAuth client-credentials complexity for cron jobs / backend calls; keys are HMAC-validated, never stored in plaintext |
-| **Bearer-token forwarding for `realmMembers`** | The ADMIN user's JWT is forwarded to the Keycloak Admin REST API; no separate service-account credentials needed in the app |
-| **`Member` table kept alongside Keycloak** | `Member` carries subscription, status history, GDPR data — fields Keycloak has no concept of; `realmMembers` is the transitional Keycloak-only view |
+| **Keycloak is the single source of truth for member identity** | Name, email, phone and membership dates live on the Keycloak user (standard fields + custom attributes); the `member` table holds no PII. One identity store, no duplication, GDPR erasure happens at the IdP |
+| **Bearer-token forwarding + M2M fallback for Admin REST** | JWT callers forward their own token to the Keycloak Admin API. API-key (M2M) callers have no user JWT, so `BearerTokenHolder` obtains a `club-m2m` client-credentials service-account token instead — no long-lived admin credentials baked into the app |
+| **`member` table kept as a lean FK stub** | It holds only the TSID (= Keycloak `memberId`), the Keycloak link, tenant scope, and the `anonymized` flag — the stable join target for status history, subscriptions, and `app_user`, none of which Keycloak models |
 | **Spring AI `@Tool` wrappers are read-only** | The chatbox assistant can only observe state, never mutate it — architectural safety boundary |
 | **TSID IDs** | Time-sorted, 64-bit, k-sortable — no UUID fragmentation, no sequence contention across tenants |
