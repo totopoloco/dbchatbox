@@ -1,0 +1,346 @@
+================================================================================
+CONVERSATION SUMMARY — 2026-06-29
+Task: TASK-member-keycloak-source-of-truth.md
+Status: COMPLETED
+================================================================================
+
+CONTEXT
+-------
+Working on implementing Keycloak as single source of truth for member identity.
+Task file: src/tasks/TASK-member-keycloak-source-of-truth.md
+
+The task involves:
+- Removing PII columns from the member table (V8 Flyway migration)
+- Making KeycloakAdminClient the authoritative source for member data
+- New KeycloakMemberService, MemberView DTO, BearerTokenHolder bean
+- Updating MemberController, MemberService, MemberRepository
+- Adding custom attributes (memberId, phoneNumber, memberSince, memberUntil,
+  memberUpdatedAt) to MEMBER-role users in all three Keycloak realm import JSONs
+- userProfile.unmanagedAttributePolicy = ADMIN_EDIT in all three realm JSONs
+- manage-users added to ADMIN clientRoles in all three realm JSONs
+
+All scope items (steps 1–14 in the task file) were implemented across two prior
+sessions. The three bugs below were discovered during integration testing and
+fixed in separate sessions. The task file has been marked Completed.
+
+
+FIX 1 — directAccessGrantsEnabled (session 1)
+------------------------------------------------------
+Running scripts/data_loader.sh produced:
+
+  400 Bad Request: {"error":"unauthorized_client",
+                    "error_description":"Client not allowed for direct access grants"}
+
+Root cause: the `club-spa` Keycloak client had `directAccessGrantsEnabled: false`
+in all three realm import JSONs. The login mutation uses the Resource Owner Password
+Credentials (ROPC) flow (grant_type=password) via the club-spa client, which
+requires directAccessGrantsEnabled=true.
+
+The app reads the client ID from:
+  application.properties → app.keycloak.spa-client-id=club-spa
+
+Fix applied: Set `"directAccessGrantsEnabled": true` on the `club-spa` client
+(first client entry, around line 51) in all three realm import files.
+
+The `club-m2m` client (second entry, around line 67) was left with
+directAccessGrantsEnabled=false — it uses serviceAccountsEnabled=true instead.
+
+
+FIX 2 — updatedAt attribute name clash (session 1)
+------------------------------------------------------
+After the container rebuild, scripts/data_loader.sh produced:
+
+  INTERNAL_ERROR for f2e6ba23-7361-cf2a-cb98-aaaa278e0d2e
+  on the `login` mutation for member.anna @ wat-simmering
+
+Keycloak server log showed:
+  java.lang.NumberFormatException: For input string: "2026-01-15T10:00:00+01:00"
+  at TokenEndpoint.processGrantRequest
+
+Root cause: The custom attribute named `updatedAt` conflicts with Keycloak's
+built-in internal `updated_at` claim, which Keycloak expects to be a Unix epoch
+integer. Storing an ISO-8601 timestamp string ("2026-01-15T10:00:00+01:00") in
+that attribute caused a NumberFormatException during ROPC token generation.
+Only MEMBER-role users (member.anna etc.) had this attribute; ADMIN-role users
+(admin.wat) had no custom attributes and logged in fine.
+
+The unhandled RestClientResponseException from Spring's RestClient bubbled up
+as INTERNAL_ERROR through GraphQL (no handler in GraphQlExceptionAdvice for it).
+
+Fix applied — renamed the Keycloak attribute key from `updatedAt` to
+`memberUpdatedAt` in all affected files:
+
+  Source files:
+    src/main/java/.../member/KeycloakMemberService.java   (2 attrs.put() calls)
+    src/main/java/.../security/KeycloakAdminClient.java   (attr() read call)
+    src/main/java/.../member/MemberView.java              (Javadoc only)
+    src/main/java/.../security/KeycloakCreateUserRequest.java (Javadoc only)
+    src/test/java/.../security/KeycloakAdminClientTest.java  (fixture JSON)
+
+  Realm import files:
+    .devcontainer/keycloak/import/wat-simmering-realm.json
+    .devcontainer/keycloak/import/union-rot-weiss-realm.json
+    .devcontainer/keycloak/import/asv-pressbaum-badminton-realm.json
+
+Note: The Java record field name `MemberView.updatedAt` and the GraphQL schema
+field `updatedAt` were NOT renamed — only the Keycloak attribute key string.
+
+The live Keycloak instance was also patched via the Admin REST API (no rebuild
+needed for the running instance). After the next container rebuild, Keycloak will
+re-import the corrected realm JSONs automatically.
+
+
+FIX 3 — members query INTERNAL_ERROR on API-key path (session 2)
+-----------------------------------------------------------------
+Calling the `members` query with an API key (X-API-Key: cmk.wat-simmering.xxx)
+produced:
+
+  INTERNAL_ERROR for cc483ab5-8f8b-4525-8872-dac2cdfc20a4
+
+Root cause: `BearerTokenHolder.getToken()` throws `IllegalStateException` when the
+current `Authentication` is not a `JwtAuthenticationToken` (i.e. on the API-key
+path). `KeycloakAdminClient.execute()` only catches `HttpClientErrorException`
+subclasses, so the `IllegalStateException` escaped as an unhandled exception and
+GraphQL mapped it to the opaque INTERNAL_ERROR.
+
+An initial fix (adding a guard in `bearer()` to throw `KeycloakAdminException`)
+was found to be incomplete — it changed the error to a descriptive message but
+still rejected valid M2M callers. See FIX 4 below for the real fix.
+
+
+FIX 4 — M2M token fallback for API-key callers (session 2)
+-----------------------------------------------------------
+Design error: the original `BearerTokenHolder` only supported forwarding a user
+JWT. API-key callers (M2M backends) are fully authorized for their tenant but have
+no user JWT to forward. The task decision table only mentioned JWT for D-1 because
+the M2M use case was not anticipated.
+
+Fix: `BearerTokenHolder` now tries the JWT path first; if no JWT is present it
+falls back to a service-account token obtained via the `club-m2m` client-credentials
+grant. The token is cached for the lifetime of the request-scoped bean.
+
+Files changed in FIX 4:
+
+  Realm import files (all 3) — added service-account-club-m2m user with
+    clientRoles: { realm-management: [view-users, manage-users] }
+    This grants the club-m2m service account permission to call the Admin REST API.
+
+  src/main/resources/db/migration/V9__add_m2m_client_secret.sql (new)
+    Adds m2m_client_secret column to the tenant table and seeds the per-realm
+    secrets (ChangeMe-WAT-M2M, ChangeMe-URW-M2M, ChangeMe-ASV-M2M).
+
+  src/main/java/.../domain/club/tenant/Tenant.java
+    Added m2mClientSecret field (bound to m2m_client_secret column).
+
+  src/main/resources/application.properties
+    Added app.keycloak.m2m-client-id=club-m2m
+
+  src/main/java/.../security/KeycloakProperties.java
+    Added m2mClientId field.
+
+  src/main/java/.../security/KeycloakAuthClient.java
+    Added clientCredentials(realm, clientId, clientSecret) method for the
+    client_credentials grant. Extracted PARAM_GRANT_TYPE, PARAM_CLIENT_ID,
+    PARAM_CLIENT_SECRET constants (previously duplicate string literals).
+
+  src/main/java/.../security/BearerTokenHolder.java
+    Rewrote getToken(): JWT path unchanged; API-key path obtains and caches
+    an M2M service-account token via KeycloakAuthClient.clientCredentials().
+    Injected: KeycloakAuthClient, TenantService, KeycloakProperties.
+
+  src/main/java/.../security/KeycloakAdminClient.java
+    Reverted bearer() to simple bearerTokenHolder.getToken() delegation —
+    the fallback logic now lives in BearerTokenHolder.
+
+
+FIX 5 — M2M service-account roles lost on container rebuild (session 3)
+------------------------------------------------------------------------
+After a full devcontainer rebuild the `members` query with an API key produced:
+
+  "The ADMIN account lacks the required Keycloak 'realm-management' client roles
+   (view-users / manage-users). Add them to the ADMIN users in the realm import."
+
+Root cause: Keycloak 26.4's `--import-realm` auto-creates `service-account-club-m2m`
+when it initialises the `club-m2m` client (`serviceAccountsEnabled: true`). The
+`clientRoles` block on that user in the realm import JSON is silently NOT applied —
+Keycloak does not merge roles onto service-account users during realm import. So
+every rebuild discards the roles that FIX 4 granted at runtime.
+
+Fix: `data_loader.sh` now calls `grant_m2m_roles` for all three realms at the very
+start of every run, using the Keycloak master-realm Admin API (admin/admin,
+admin-cli). The call is idempotent. It:
+  1. Gets a master-realm token
+  2. Looks up the `club-m2m` client's internal UUID
+  3. Gets the service-account user UUID from `/clients/{id}/service-account-user`
+  4. Looks up the `realm-management` client UUID
+  5. Fetches the `view-users` + `manage-users` role representations
+  6. POSTs them to `/users/{sa_id}/role-mappings/clients/{rm_id}`
+
+Files changed in FIX 5:
+  scripts/data_loader.sh
+    - Added `KEYCLOAK_URL` variable (default: http://keycloak:8088)
+    - Added `get_master_token()` function
+    - Added `grant_m2m_roles(realm)` function
+    - Added grant_m2m_roles calls for all 3 realms before WAT Simmering block
+
+Note: The `service-account-club-m2m` user with `clientRoles` was intentionally left
+in the realm import JSONs as a best-effort attempt, but it CANNOT be relied upon.
+`data_loader.sh` is the authoritative source for this role grant.
+
+Note: Inside the devcontainer, Keycloak is reachable at `http://keycloak:8088`
+(Docker DNS on dev-network). `localhost:8088` does NOT work from inside the
+devcontainer. The application uses `http://keycloak:8088` via application-dev.properties.
+ALL Keycloak Admin REST calls (data_loader.sh, manual curl debugging, master-token
+grants) MUST target http://keycloak:8088 from inside the devcontainer.
+
+
+FIX 6 — view-realm role required to list members by realm role (session 4)
+---------------------------------------------------------------------------
+After a rebuild the `members` query failed AGAIN with the SAME error text as FIX 5:
+
+  "The ADMIN account lacks the required Keycloak 'realm-management' client roles
+   (view-users / manage-users). Add them to the ADMIN users in the realm import."
+
+This message was MISLEADING — KeycloakAdminClient.forbidden() throws it on ANY 403
+from the Admin API, regardless of which role is actually missing or which auth path
+(JWT vs API-key) is in use. It is NOT the same root cause as FIX 5.
+
+Diagnosis (against http://keycloak:8088):
+  - JWT path (admin.wat via club-spa login) WORKED — admin.wat's token carries the full
+    realm-management set; its realm-admin composite already includes view-realm.
+  - API-key / M2M path FAILED with 403. The club-m2m service account had view-users +
+    manage-users (granted by FIX 5) but NOT view-realm.
+  - Root cause: the app lists members via
+        GET /admin/realms/{realm}/roles/MEMBER/users   (users-in-realm-role)
+    Keycloak guards THIS endpoint with the realm-level "view-realm" permission, not
+    "view-users". Proven with a club-m2m client_credentials token:
+        GET /admin/realms/wat-simmering/users              -> 200  (view-users suffices)
+        GET /admin/realms/wat-simmering/roles/MEMBER/users -> 403  (needs view-realm)
+    Granting view-realm to the service account flipped /roles/MEMBER/users to 200.
+
+Fix applied (PERMANENT):
+  scripts/data_loader.sh — grant_m2m_roles() now also grants view-realm
+    (jq filter: view-users OR manage-users OR view-realm). THIS IS THE AUTHORITATIVE
+    source. It runs at the top of every data_loader run for all 3 realms via the
+    master-realm Admin API (admin/admin, admin-cli) against http://keycloak:8088.
+  .devcontainer/keycloak/import/*-realm.json — added view-realm to the
+    service-account-club-m2m clientRoles block (best-effort only; --import-realm does
+    NOT reliably apply client-roles to auto-created service-account users, so
+    data_loader.sh is what GUARANTEES it — see FIX 5).
+  KeycloakAdminClient.forbidden() — error message rewritten to name view-realm and the
+    /roles/{role}/users endpoint, and to distinguish the JWT vs M2M remedies.
+
+
+FIX 7 — createdAt null for realm-import MEMBER fixtures (session 4)
+-------------------------------------------------------------------
+After FIX 6 the members query reached data-fetching but returned a GraphQL error:
+
+  "The field at path '/members[2]/createdAt' was declared as a non null type, but the
+   code involved in retrieving data has wrongly returned a null value ... The
+   non-nullable type is 'DateTime' within parent type 'Member'"
+
+Diagnosis:
+  - MemberView.createdAt maps to the Keycloak user's createdTimestamp
+    (KeycloakUserRepresentation.toMemberView -> epochMillisToOffset(createdTimestamp)).
+  - member-a / member-b are created at RUNTIME by data_loader (createMember -> Admin
+    API), so Keycloak sets createdTimestamp automatically — they were fine.
+  - member.anna / member.urw / member.asv are REALM-IMPORT FIXTURES. Keycloak does NOT
+    auto-populate createdTimestamp for users defined in a realm-import JSON unless the
+    field is explicitly present -> their createdTimestamp was null -> the non-null
+    DateTime! field failed the WHOLE query (data: null).
+  - Keycloak treats createdTimestamp as READ-ONLY after creation: a PUT update returns
+    204 but the value stays null. It can only be set at create/import time.
+  - There is NO `member` DB-stub row for the imported fixtures (only member-a/b have
+    rows), so createdAt cannot fall back to the Auditable column — it MUST come from
+    Keycloak.
+
+Fix applied (PERMANENT):
+  .devcontainer/keycloak/import/*-realm.json — added "createdTimestamp" (epoch millis of
+  each fixture's memberSince date) to each imported MEMBER fixture:
+        member.anna  memberSince 2024-01-15 -> createdTimestamp 1705276800000
+        member.urw   memberSince 2024-02-20 -> createdTimestamp 1708387200000
+        member.asv   memberSince 2024-03-10 -> createdTimestamp 1710028800000
+  PROVEN that full realm import honors this: importing the real committed JSON as a
+  throwaway realm via POST /admin/realms (same RepresentationToModel.importRealm code
+  path as start-dev --import-realm) produced member.anna with
+  createdTimestamp=1705276800000. So a clean rebuild (volume wiped) re-applies it.
+
+  Live instance (before rebuild) was patched via partialImport ifResourceExists=OVERWRITE
+  on http://keycloak:8088, since update is read-only. That patch is discarded on the next
+  volume-wipe rebuild and replaced by the realm-import value — no action needed.
+
+  KNOWN FRAGILITY (left as-is, not requested): because Member.createdAt is DateTime!
+  sourced from Keycloak, a SINGLE member missing createdTimestamp fails the ENTIRE
+  members query. If this recurs for a new imported user, either add createdTimestamp to
+  that user in the realm JSON, OR make createdAt nullable in schema.graphqls, OR add a
+  non-null fallback in KeycloakUserRepresentation.toMemberView().
+
+
+ACTION REQUIRED after container rebuild
+----------------------------------------
+Inside the devcontainer Keycloak is at http://keycloak:8088 (NOT localhost:8088).
+
+Keycloak re-imports realm JSON on startup automatically (start-dev --import-realm).
+The realm imports now carry createdTimestamp on every MEMBER fixture (FIX 7), so the
+createdAt field is populated on a clean rebuild with no manual step.
+
+After the devcontainer is fully up:
+  1. Start the app:  ./gradlew bootRun   (dev profile; Flyway runs V1..V9 incl. the
+     tenant m2m_client_secret seed).
+  2. Run:  ./scripts/data_loader.sh
+     -> grants view-users + manage-users + view-realm to the club-m2m service account in
+        all 3 realms (FIX 5 + FIX 6), seeds members/trainers/subscriptions, and writes
+        FRESH API keys to scripts/keycloak-credentials.txt.
+
+IMPORTANT: V9 migration runs automatically on app startup (Flyway). No manual DB steps.
+IMPORTANT: data_loader.sh regenerates the API keys every run — re-read
+           scripts/keycloak-credentials.txt for the new cmk.<slug>.<key> values
+           (the old ones are invalid after an app restart / rebuild).
+
+The members query then works with both:
+  - Authorization: Bearer <jwt>   (user JWT from login mutation)
+  - x-api-key: cmk.<slug>.<key>  (M2M API key via client-credentials fallback)
+and createdAt / memberSince resolve for every member including the imported fixtures.
+
+
+TASK STATUS
+-----------
+TASK-member-keycloak-source-of-truth.md is marked COMPLETED.
+
+All known issues fixed (through FIX 7). No outstanding blockers. The two session-4
+fixes (FIX 6 view-realm, FIX 7 createdTimestamp) live entirely in committed files
+(scripts/data_loader.sh + the 3 realm JSONs) and survive a full volume-wipe rebuild.
+
+Files changed across all sessions:
+  .devcontainer/keycloak/import/wat-simmering-realm.json            (FIX 6: SA view-realm; FIX 7: member.anna createdTimestamp)
+  .devcontainer/keycloak/import/union-rot-weiss-realm.json          (FIX 6: SA view-realm; FIX 7: member.urw createdTimestamp)
+  .devcontainer/keycloak/import/asv-pressbaum-badminton-realm.json  (FIX 6: SA view-realm; FIX 7: member.asv createdTimestamp)
+  src/main/resources/db/migration/V8__member_keycloak_source_of_truth.sql
+  src/main/resources/db/migration/V9__add_m2m_client_secret.sql  (new)
+  src/main/resources/application.properties
+  src/main/java/.../domain/club/tenant/Tenant.java
+  src/main/java/.../domain/club/member/Member.java
+  src/main/java/.../domain/club/member/MemberView.java
+  src/main/java/.../domain/club/member/KeycloakMemberService.java
+  src/main/java/.../domain/club/member/MemberService.java
+  src/main/java/.../domain/club/member/MemberRepository.java
+  src/main/java/.../domain/club/member/MemberGdprService.java
+  src/main/java/.../security/BearerTokenHolder.java
+  src/main/java/.../security/KeycloakAdminClient.java   (FIX 6: forbidden() message rewritten to name view-realm + /roles/{role}/users)
+  src/main/java/.../security/KeycloakAuthClient.java
+  src/main/java/.../security/KeycloakCreateUserRequest.java
+  src/main/java/.../security/KeycloakUpdateUserRequest.java
+  src/main/java/.../security/KeycloakProperties.java
+  src/main/java/.../web/graphql/MemberController.java
+  src/main/java/.../web/graphql/RealmMemberController.java
+  src/main/java/.../web/graphql/ChatAssistantController.java
+  src/main/java/.../web/graphql/GraphQlExceptionAdvice.java
+  src/main/java/.../chatbox/tools/MemberQueryTools.java
+  src/main/java/.../chatbox/tools/SubscriptionQueryTools.java
+  src/main/java/.../scheduling/GdprPurgeJob.java
+  src/test/java/.../security/KeycloakAdminClientTest.java
+  scripts/data_loader.sh   (FIX 5: added KEYCLOAK_URL, get_master_token, grant_m2m_roles;
+                            FIX 6: grant_m2m_roles also grants view-realm)
+  CLAUDE.md
+  src/tasks/TASK-member-keycloak-source-of-truth.md  (status → Completed)
+================================================================================
