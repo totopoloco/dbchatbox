@@ -7,6 +7,7 @@ import at.mavila.dbchatbox.domain.chatbox.exception.ChatProviderUnavailableExcep
 import at.mavila.dbchatbox.domain.chatbox.exception.ChatRateLimitExceededException;
 import at.mavila.dbchatbox.domain.club.exception.DuplicateEmailException;
 import at.mavila.dbchatbox.domain.club.exception.DuplicateNameException;
+import at.mavila.dbchatbox.domain.club.exception.InvalidCredentialsException;
 import at.mavila.dbchatbox.domain.club.exception.InvalidOperationException;
 import at.mavila.dbchatbox.domain.club.exception.InvalidStatusTransitionException;
 import at.mavila.dbchatbox.domain.club.exception.InvalidTenantException;
@@ -53,6 +54,21 @@ public class GraphQlExceptionAdvice {
   @GraphQlExceptionHandler(KeycloakAdminException.class)
   public GraphQLError handleKeycloakAdmin(final KeycloakAdminException ex, final DataFetchingEnvironment env) {
     return GraphQLError.newError().message(ex.getMessage()).errorType(graphql.ErrorType.DataFetchingException)
+        .path(env.getExecutionStepInfo().getPath()).build();
+  }
+
+  /**
+   * Handles login/refresh failures (wrong password, expired refresh token) as
+   * {@code ValidationError} so the caller receives a structured error without a stack trace.
+   *
+   * @param ex  the invalid-credentials exception
+   * @param env the data-fetching environment
+   * @return a GraphQL error with the exception message
+   */
+  @GraphQlExceptionHandler(InvalidCredentialsException.class)
+  public GraphQLError handleInvalidCredentials(final InvalidCredentialsException ex,
+      final DataFetchingEnvironment env) {
+    return GraphQLError.newError().message(ex.getMessage()).errorType(graphql.ErrorType.ValidationError)
         .path(env.getExecutionStepInfo().getPath()).build();
   }
 

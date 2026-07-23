@@ -6,7 +6,10 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+
+import at.mavila.dbchatbox.domain.club.exception.InvalidCredentialsException;
 
 /**
  * HTTP client for Keycloak's OpenID Connect token endpoint.
@@ -60,7 +63,12 @@ public class KeycloakAuthClient {
         form.add(PARAM_CLIENT_ID, props.getSpaClientId());
         form.add("username", username);
         form.add("password", password);
-        return exchange(realm, form);
+        try {
+            return exchange(realm, form);
+        } catch (final HttpClientErrorException.Unauthorized ex) {
+            log.warn("Login rejected by Keycloak for user '{}' in realm '{}'", username, realm);
+            throw new InvalidCredentialsException("Invalid username or password");
+        }
     }
 
     /**
@@ -93,7 +101,12 @@ public class KeycloakAuthClient {
         form.add(PARAM_GRANT_TYPE, GRANT_REFRESH);
         form.add(PARAM_CLIENT_ID, props.getSpaClientId());
         form.add("refresh_token", refreshToken);
-        return exchange(realm, form);
+        try {
+            return exchange(realm, form);
+        } catch (final HttpClientErrorException.Unauthorized ex) {
+            log.warn("Token refresh rejected by Keycloak in realm '{}'", realm);
+            throw new InvalidCredentialsException("Refresh token is invalid or has expired");
+        }
     }
 
     private AuthPayload exchange(final String realm, final MultiValueMap<String, String> form) {
