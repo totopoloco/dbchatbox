@@ -77,7 +77,8 @@
       "Bash(git show *)",
       "Bash(cat .claude/settings.local.json)",
       "Bash(python3 -c \"import json; d=json.load\\(open\\('/tmp/settings_local.json'\\)\\); [print\\(e\\) for e in d['permissions']['allow']]\")",
-      "Bash(python3 -c \"import json; d=json.load\\(open\\('/tmp/settings_theirs.json'\\)\\); [print\\(e\\) for e in d['permissions']['allow']]\")"
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/tmp/settings_theirs.json'\\)\\); [print\\(e\\) for e in d['permissions']['allow']]\")",
+      "Bash(git config *)"
     ],
     "additionalDirectories": [
       "/workspace/src/main/java/at/mavila/dbchatbox/infrastructure/security"
