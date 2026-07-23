@@ -69,7 +69,15 @@
       "Bash(curl -s -X POST http://localhost:8080/graphql -H 'Content-Type: application/json' -H 'X-API-Key: cmk.wat-simmering.Y28p89ldGOxDmX3n3gV56TQjIld3v8LI' -d '{\"query\":\"query MyQuery { members { firstName email currentStatus createdAt lastName memberSince } }\"}')",
       "Bash(grep -nE \"^#{2,3} \" docs/architecture.md)",
       "Bash(grep -c '```mermaid' docs/architecture.md)",
-      "Bash(grep -c '^```$' docs/architecture.md)"
+      "Bash(grep -c '^```$' docs/architecture.md)",
+      "Bash(git pull *)",
+      "Bash(git fetch *)",
+      "Bash(git stash *)",
+      "Bash(git apply *)",
+      "Bash(git show *)",
+      "Bash(cat .claude/settings.local.json)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/tmp/settings_local.json'\\)\\); [print\\(e\\) for e in d['permissions']['allow']]\")",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/tmp/settings_theirs.json'\\)\\); [print\\(e\\) for e in d['permissions']['allow']]\")"
     ],
     "additionalDirectories": [
       "/workspace/src/main/java/at/mavila/dbchatbox/infrastructure/security"
