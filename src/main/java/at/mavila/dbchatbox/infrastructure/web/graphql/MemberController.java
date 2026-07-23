@@ -34,11 +34,15 @@ import lombok.RequiredArgsConstructor;
  * DB-backed via {@link MemberService}.
  * </p>
  *
+ * <p>All operations require the {@code ADMIN} role — member PII (name, email, phone, dates) must
+ * not be visible to regular members or trainers, and the {@code member} back-reference on
+ * subscriptions/payments would otherwise leak that PII to non-admin callers.</p>
+ *
  * @since 2026-04-09
  */
 @Controller
 @RequiredArgsConstructor
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("hasRole('ADMIN')")
 public class MemberController {
 
   private final KeycloakMemberService keycloakMemberService;

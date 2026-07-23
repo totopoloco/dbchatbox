@@ -428,13 +428,13 @@ mindmap
       me 🔒
       currentTenant 🔒
     Members
-      members 🔒
-      memberById 🔒
-      memberStatusHistory 🔒
-      createMember 🔒
-      updateMember 🔒
-      changeMemberStatus 🔒
-      deleteMember 🔒
+      members 👑
+      memberById 👑
+      memberStatusHistory 👑
+      createMember 👑
+      updateMember 👑
+      changeMemberStatus 👑
+      deleteMember 👑
     Realm
       realmMembers 👑
     Identity
