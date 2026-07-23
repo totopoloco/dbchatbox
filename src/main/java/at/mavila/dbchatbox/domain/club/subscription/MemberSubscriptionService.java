@@ -24,6 +24,7 @@ import at.mavila.dbchatbox.domain.club.membership.MembershipTypeRepository;
 import at.mavila.dbchatbox.domain.club.membership.MembershipTypeStatus;
 import at.mavila.dbchatbox.domain.support.CommandValidator;
 import at.mavila.dbchatbox.infrastructure.security.TenantScopedFinder;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -35,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 @Component
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class MemberSubscriptionService {
 
   private final MemberSubscriptionRepository subscriptionRepository;
@@ -114,17 +116,23 @@ public class MemberSubscriptionService {
   /**
    * Lists subscriptions for a member, optionally filtering by active state.
    *
+   * <p>Member existence is NOT re-validated here against the DB, because Keycloak is the source
+   * of truth for member identity (V8 migration). Realm-import fixtures have no {@code member} DB
+   * stub, so a DB lookup would throw a false {@link MemberNotFoundException}. Callers are
+   * responsible for validating the member against Keycloak before reaching this method:
+   * the {@code @SchemaMapping} path already has the {@link at.mavila.dbchatbox.domain.club.member.MemberView}
+   * from Keycloak; the standalone {@code memberSubscriptions} query validates via
+   * {@link at.mavila.dbchatbox.domain.club.member.KeycloakMemberService#findById(Long)}.</p>
+   *
    * @param memberId
-   *                   the member ID
+   *                   the member TSID (Keycloak {@code memberId} attribute)
    * @param activeOnly
-   *                   true to return only active subscriptions (endDate >= today)
-   * @return matching subscriptions
+   *                   {@code true} to return only active subscriptions (endDate &gt;= today);
+   *                   {@code false} or {@code null} to return all
+   * @return matching subscriptions, possibly empty
    */
   @Transactional(readOnly = true)
   public List<MemberSubscription> findByMember(final Long memberId, final Boolean activeOnly) {
-    tenantScopedFinder.findById(memberRepository, memberId)
-        .orElseThrow(() -> new MemberNotFoundException(memberId));
-
     if (Boolean.TRUE.equals(activeOnly)) {
       return subscriptionRepository.findByMemberIdAndEndDateGreaterThanEqual(memberId, LocalDate.now());
     }

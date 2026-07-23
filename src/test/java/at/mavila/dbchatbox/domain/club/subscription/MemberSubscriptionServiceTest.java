@@ -5,6 +5,7 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Month;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -16,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import at.mavila.dbchatbox.domain.club.member.Member;
 import at.mavila.dbchatbox.domain.club.member.MemberRepository;
 import at.mavila.dbchatbox.domain.club.member.MemberService;
 import at.mavila.dbchatbox.domain.club.membership.MembershipType;
@@ -56,6 +58,59 @@ class MemberSubscriptionServiceTest {
   @AfterEach
   void clearTenant() {
     TenantContext.clear();
+  }
+
+  @Nested
+  class FindByMember {
+
+    @Test
+    void shouldReturnSubscriptionsWithoutRequiringDbMemberStub() {
+      final long memberId = 859577071316862001L;
+      final MemberSubscription sub = MemberSubscription.builder()
+          .id(1L)
+          .member(Member.builder().id(memberId).build())
+          .startDate(LocalDate.of(2024, Month.JANUARY, 1))
+          .endDate(LocalDate.of(2025, Month.JANUARY, 1))
+          .agreedPrice(BigDecimal.valueOf(120))
+          .paymentStatus(SubscriptionPaymentStatus.NOT_PAID)
+          .build();
+
+      when(subscriptionRepository.findByMemberId(memberId)).thenReturn(List.of(sub));
+
+      final List<MemberSubscription> result = service.findByMember(memberId, null);
+
+      assertThat(result).hasSize(1);
+      assertThat(result.getFirst().getId()).isEqualTo(1L);
+    }
+
+    @Test
+    void shouldReturnEmptyListWhenMemberHasNoSubscriptions() {
+      final long memberId = 859577071316862001L;
+      when(subscriptionRepository.findByMemberId(memberId)).thenReturn(List.of());
+
+      assertThat(service.findByMember(memberId, null)).isEmpty();
+    }
+
+    @Test
+    void shouldFilterActiveSubscriptionsWhenActiveTrueRequested() {
+      final long memberId = 42L;
+      final MemberSubscription active = MemberSubscription.builder()
+          .id(10L)
+          .member(Member.builder().id(memberId).build())
+          .startDate(LocalDate.now().minusDays(10))
+          .endDate(LocalDate.now().plusMonths(1))
+          .agreedPrice(BigDecimal.valueOf(50))
+          .paymentStatus(SubscriptionPaymentStatus.NOT_PAID)
+          .build();
+
+      when(subscriptionRepository.findByMemberIdAndEndDateGreaterThanEqual(memberId, LocalDate.now()))
+          .thenReturn(List.of(active));
+
+      final List<MemberSubscription> result = service.findByMember(memberId, true);
+
+      assertThat(result).hasSize(1);
+      assertThat(result.getFirst().getId()).isEqualTo(10L);
+    }
   }
 
   @Nested

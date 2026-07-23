@@ -12,6 +12,7 @@ import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 
+import at.mavila.dbchatbox.domain.club.member.KeycloakMemberService;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscription;
 import at.mavila.dbchatbox.domain.club.subscription.MemberSubscriptionService;
 import at.mavila.dbchatbox.domain.club.subscription.SubscribeMemberCommand;
@@ -28,19 +29,25 @@ import lombok.RequiredArgsConstructor;
 public class SubscriptionController {
 
   private final MemberSubscriptionService subscriptionService;
+  private final KeycloakMemberService keycloakMemberService;
 
   // ==================== QUERIES ====================
 
   /**
    * Returns subscriptions for a member, optionally filtered by active state.
    *
-   * @param memberId the member ID
-   * @param active   optional filter — {@code true} for active only, {@code false}
-   *                 for ended only
-   * @return list of matching subscriptions
+   * <p>Validates that the member exists in the current tenant's Keycloak realm before
+   * querying subscriptions — the DB {@code member} stub is not a reliable existence check
+   * because Keycloak realm-import fixtures have no stub row.</p>
+   *
+   * @param memberId the member TSID
+   * @param active   optional filter — {@code true} for active only, {@code false} or
+   *                 {@code null} for all
+   * @return list of matching subscriptions, possibly empty
    */
   @QueryMapping
   public List<MemberSubscription> memberSubscriptions(@Argument final Long memberId, @Argument final Boolean active) {
+    keycloakMemberService.findById(memberId);
     return subscriptionService.findByMember(memberId, active);
   }
 
